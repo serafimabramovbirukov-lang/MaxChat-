@@ -1,11 +1,18 @@
 package com.swill.maxchat
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.app.Activity
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.core.app.NotificationCompat
 import com.google.firebase.database.*
 
 class MainActivity : Activity() {
@@ -13,8 +20,8 @@ class MainActivity : Activity() {
     private lateinit var database: DatabaseReference
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
+    private var lastMessageTime = 0L
 
-    // Список чатов: ID, Название, Иконка (из стандартных), Последнее сообщение (для теста)
     private val chats = listOf(
         Triple("general", "Общий чат", android.R.drawable.ic_menu_agenda),
         Triple("friends", "Друзья", android.R.drawable.ic_menu_myplaces),
@@ -24,10 +31,24 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         database = FirebaseDatabase.getInstance().getReference("chats")
+        createNotificationChannel()
         showChatListScreen()
     }
 
-    // Экран списка чатов (как в Telegram/WhatsApp)
+    // Создаем канал для уведомлений (обязательно для Android 8+)
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "MaxChat Notifications"
+            val descriptionText = "Уведомления о новых сообщениях"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel("maxchat_channel", name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
     private fun showChatListScreen() {
         currentChatId = null
         val mainLayout = LinearLayout(this).apply {
@@ -35,7 +56,6 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
         }
 
-        // Шапка приложения (синяя)
         val header = TextView(this).apply {
             text = "MaxChat"
             textSize = 22f
@@ -50,16 +70,13 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Проходим по списку чатов и создаем красивые элементы
         for ((id, name, iconRes) in chats) {
             val chatLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(32, 32, 32, 32)
                 gravity = Gravity.CENTER_VERTICAL
-                setBackgroundColor(Color.WHITE)
             }
 
-            // Аватарка (картинка)
             val avatar = ImageView(this).apply {
                 setImageResource(iconRes)
                 setBackgroundColor(Color.parseColor("#E0E0E0"))
@@ -69,7 +86,6 @@ class MainActivity : Activity() {
             }
             chatLayout.addView(avatar)
 
-            // Текст: Название и последнее сообщение
             val textLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
@@ -83,7 +99,7 @@ class MainActivity : Activity() {
             }
 
             val lastMessage = TextView(this).apply {
-                text = "Нажмите, чтобы открыть" // Заглушка, потом заменим на реальное сообщение
+                text = "Нажмите, чтобы открыть"
                 textSize = 14f
                 setTextColor(Color.GRAY)
             }
@@ -92,25 +108,14 @@ class MainActivity : Activity() {
             textLayout.addView(lastMessage)
             chatLayout.addView(textLayout)
 
-            // Время (справа)
-            val timeView = TextView(this).apply {
-                text = "12:00" // Заглушка, потом сделаем реальное время
-                textSize = 12f
-                setTextColor(Color.GRAY)
-            }
-            chatLayout.addView(timeView)
-
             chatLayout.setOnClickListener {
                 currentChatId = id
                 showChatScreen(name, id)
             }
 
             chatListLayout.addView(chatLayout)
-
-            // Разделитель (тонкая линия)
-            val divider = View(this).apply {
-                setBackgroundColor(Color.parseColor("#E0E0E0"))
-            }
+            
+            val divider = View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }
             chatListLayout.addView(divider, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
 
@@ -119,11 +124,8 @@ class MainActivity : Activity() {
         setContentView(mainLayout)
     }
 
-    // Экран самого чата
     private fun showChatScreen(chatName: String, chatId: String) {
-        val mainLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -146,7 +148,6 @@ class MainActivity : Activity() {
         headerLayout.addView(headerTitle)
         mainLayout.addView(headerLayout)
 
-        // Область сообщений (светло-серый фон, как в мессенджерах)
         scrollView = ScrollView(this)
         messagesLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -156,9 +157,7 @@ class MainActivity : Activity() {
         scrollView.addView(messagesLayout)
         
         mainLayout.addView(scrollView, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1.0f
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f
         ))
 
         val inputLayout = LinearLayout(this).apply {
@@ -168,11 +167,7 @@ class MainActivity : Activity() {
         }
 
         val editText = EditText(this).apply { hint = "Сообщение..." }
-        inputLayout.addView(editText, LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1.0f
-        ))
+        inputLayout.addView(editText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f))
 
         val sendButton = Button(this).apply { text = "->" }
         inputLayout.addView(sendButton)
@@ -196,26 +191,62 @@ class MainActivity : Activity() {
         database.child(chatId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 messagesLayout.removeAllViews()
+                var latestTime = 0L
+                var latestText = ""
+
                 for (child in snapshot.children) {
                     val text = child.child("text").getValue(String::class.java) ?: ""
+                    val time = child.child("timestamp").getValue(Long::class.java) ?: 0L
+                    
                     val messageView = TextView(this@MainActivity).apply {
                         this.text = text
                         textSize = 18f
                         setPadding(16, 16, 16, 16)
                         setBackgroundColor(Color.WHITE)
                         val params = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
+                            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                         )
                         params.setMargins(0, 8, 0, 8)
                         layoutParams = params
                     }
                     messagesLayout.addView(messageView)
+
+                    if (time > latestTime) {
+                        latestTime = time
+                        latestText = text
+                    }
                 }
                 scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+
+                // Если пришло новое сообщение (и это не наше) — вибрируем и показываем уведомление
+                if (latestTime > lastMessageTime && latestTime != 0L) {
+                    lastMessageTime = latestTime
+                    vibrateAndNotify(latestText)
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {}
         })
+    }
+
+    private fun vibrateAndNotify(text: String) {
+        // Вибрация
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            vibrator.vibrate(500)
+        }
+
+        // Уведомление
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val builder = NotificationCompat.Builder(this, "maxchat_channel")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Новое сообщение")
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(1, builder.build())
     }
 }
