@@ -210,7 +210,7 @@ class MainActivity : Activity() {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
                 val message = mapOf(
-                    "user" to userName, // <-- Сохраняем имя
+                    "user" to userName, // Сохраняем имя
                     "text" to text, 
                     "timestamp" to System.currentTimeMillis()
                 )
@@ -261,6 +261,7 @@ class MainActivity : Activity() {
                     messageContainer.addView(textView)
                     messagesLayout.addView(messageContainer)
                 }
+                // Прокручиваем вниз
                 scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
             }
 
