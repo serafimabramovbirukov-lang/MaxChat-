@@ -20,11 +20,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     
-    kotlinOptions { 
-        jvmTarget = "17" 
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
 dependencies {
-    // Здесь пусто, чтобы Gradle не искал никакие сторонние библиотеки
+    implementation("androidx.appcompat:appcompat:1.7.0")
 }
