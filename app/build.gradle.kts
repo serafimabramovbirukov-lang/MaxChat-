@@ -34,3 +34,10 @@ configurations.configureEach {
         force("androidx.fragment:fragment-ktx:1.8.0")
     }
 }
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.fragment:fragment:1.8.0")
+        force("androidx.fragment:fragment-ktx:1.8.0")
+        force("androidx.loader:loader:1.1.0")
+    }
+}
