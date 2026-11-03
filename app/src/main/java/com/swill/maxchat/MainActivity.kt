@@ -1,19 +1,18 @@
 package com.swill.maxchat
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.text.BasicText
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            BasicText(
-                text = "MaxChat успешно запущен!",
-                modifier = Modifier
-            )
+        
+        val textView = TextView(this).apply {
+            text = "MaxChat успешно запущен!"
+            textSize = 24f
+            setPadding(50, 50, 50, 50)
         }
+        setContentView(textView)
     }
 }
