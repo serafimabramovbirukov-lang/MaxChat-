@@ -1,18 +1,11 @@
 package com.swill.maxchat
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Context
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import android.app.Activity
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.view.Gravity
 import android.view.View
 import android.widget.*
-import androidx.core.app.NotificationCompat
 import com.google.firebase.database.*
 
 class MainActivity : Activity() {
@@ -20,7 +13,6 @@ class MainActivity : Activity() {
     private lateinit var database: DatabaseReference
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
-    private var lastMessageTime = 0L
 
     private val chats = listOf(
         Triple("general", "Общий чат", android.R.drawable.ic_menu_agenda),
@@ -31,22 +23,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         database = FirebaseDatabase.getInstance().getReference("chats")
-        createNotificationChannel()
         showChatListScreen()
-    }
-
-    // Создаем канал для уведомлений (обязательно для Android 8+)
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "MaxChat Notifications"
-            val descriptionText = "Уведомления о новых сообщениях"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel("maxchat_channel", name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
     }
 
     private fun showChatListScreen() {
@@ -191,13 +168,8 @@ class MainActivity : Activity() {
         database.child(chatId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 messagesLayout.removeAllViews()
-                var latestTime = 0L
-                var latestText = ""
-
                 for (child in snapshot.children) {
                     val text = child.child("text").getValue(String::class.java) ?: ""
-                    val time = child.child("timestamp").getValue(Long::class.java) ?: 0L
-                    
                     val messageView = TextView(this@MainActivity).apply {
                         this.text = text
                         textSize = 18f
@@ -210,43 +182,11 @@ class MainActivity : Activity() {
                         layoutParams = params
                     }
                     messagesLayout.addView(messageView)
-
-                    if (time > latestTime) {
-                        latestTime = time
-                        latestText = text
-                    }
                 }
                 scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
-
-                // Если пришло новое сообщение (и это не наше) — вибрируем и показываем уведомление
-                if (latestTime > lastMessageTime && latestTime != 0L) {
-                    lastMessageTime = latestTime
-                    vibrateAndNotify(latestText)
-                }
             }
 
             override fun onCancelled(error: DatabaseError) {}
         })
-    }
-
-    private fun vibrateAndNotify(text: String) {
-        // Вибрация
-        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
-        } else {
-            vibrator.vibrate(500)
-        }
-
-        // Уведомление
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val builder = NotificationCompat.Builder(this, "maxchat_channel")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Новое сообщение")
-            .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-
-        notificationManager.notify(1, builder.build())
     }
 }
