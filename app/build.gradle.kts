@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.swill.maxchat"
-    compileSdk = 35 // <-- Изменили с 34 на 35
+    compileSdk = 35
     
     defaultConfig {
         applicationId = "com.swill.maxchat"
@@ -27,5 +27,5 @@ android {
 }
 
 dependencies {
-    implementation("com.google.firebase:firebase-database-ktx:21.0.0")
+    implementation("com.google.firebase:firebase-database:21.0.0")
 }
