@@ -7,16 +7,18 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import okhttp3.*
-import java.util.concurrent.TimeUnit
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.Socket
+import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
-    private var webSocket: WebSocket? = null
-    private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
+    private var socket: Socket? = null
+    private var out: PrintWriter? = null
+    private var reader: BufferedReader? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,7 +63,9 @@ class MainActivity : Activity() {
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
-                webSocket?.send(text)
+                thread {
+                    out?.println(text)
+                }
                 editText.text.clear()
             }
         }
@@ -71,28 +75,28 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        // Используем https:// и добавляем заголовки для обхода бага Cloudflare
-        val url = "https://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/"
-        
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("Upgrade", "websocket")
-            .addHeader("Connection", "Upgrade")
-            .build()
-        
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
+        thread {
+            try {
+                // Подключаемся к Cloudflare через порт 443 (SSL)
+                val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
+                val rawSocket = Socket("mysty-dawn-51cd.serafimabrambirukov.workers.dev", 443)
+                val sslSocket = sslSocketFactory.createSocket(rawSocket, "mysty-dawn-51cd.serafimabrambirukov.workers.dev", 443, true) as javax.net.ssl.SSLSocket
+                
+                socket = sslSocket
+                out = PrintWriter(sslSocket.getOutputStream(), true)
+                reader = BufferedReader(InputStreamReader(sslSocket.getInputStream()))
+
                 addMessage("Система: Подключено к серверу!")
+                
+                // Слушаем входящие сообщения
+                var line: String?
+                while (reader?.readLine().also { line = it } != null) {
+                    addMessage(line ?: "")
+                }
+            } catch (e: Exception) {
+                addMessage("Ошибка: ${e.message}")
             }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                addMessage(text)
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                addMessage("Ошибка: ${t.message}")
-            }
-        })
+        }
     }
 
     private fun addMessage(text: String) {
@@ -109,6 +113,6 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        webSocket?.close(1000, "Bye")
+        socket?.close()
     }
 }
