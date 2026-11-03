@@ -28,3 +28,9 @@ android {
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
 }
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.fragment:fragment:1.8.0")
+        force("androidx.fragment:fragment-ktx:1.8.0")
+    }
+}
