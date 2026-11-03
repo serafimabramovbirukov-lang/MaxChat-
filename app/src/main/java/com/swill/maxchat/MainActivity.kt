@@ -71,8 +71,8 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        // Новый адрес сервера
-        val request = Request.Builder().url("wss://lucky-bird-6078.serafimabramovbirukov.workers.dev/").build()
+        // Адрес от RelaxDev (обязательно wss://)
+        val request = Request.Builder().url("wss://maxchat.isodomain.tech/").build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
