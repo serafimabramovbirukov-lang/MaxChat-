@@ -319,3 +319,29 @@ class MainActivity : Activity() {
                         params.setMargins(0, 4, 0, 4); layoutParams = params
                     }
                     val nameView = TextView(this@MainActivity).apply { text = senderName; te
+// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+private fun saveLogin() { 
+    getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().putString("name", myName).putString("phone", myPhone).apply() 
+}
+
+private fun logout() { 
+    getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().clear().apply(); myPhone = ""; myName = ""; chatHistory.clear(); showAuthScreen() 
+}
+
+private fun saveChatHistory() { 
+    getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().putString("chatHistory", chatHistory.joinToString("|") { "${it.first}:${it.second}" }).apply() 
+}
+
+private fun loadChatHistory() { 
+    val h = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).getString("chatHistory", "") ?: ""
+    if (h.isNotEmpty()) { 
+        chatHistory.clear()
+        h.split("|").forEach { val p = it.split(":"); if (p.size == 2) chatHistory.add(Pair(p[0], p[1])) } 
+    } 
+}
+
+private fun addChatToHistory(id: String, name: String) { 
+    if (chatHistory.none { it.first == id }) { 
+        chatHistory.add(Pair(id, name)); saveChatHistory() 
+    } 
+}
