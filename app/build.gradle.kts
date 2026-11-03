@@ -27,3 +27,9 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.compose.ui:ui:1.6.8")
 }
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.emoji2:emoji2:1.4.0")
+        force("androidx.emoji2:emoji2-views-helper:1.4.0")
+    }
+}
