@@ -26,5 +26,5 @@ android {
 }
 
 dependencies {
-    // Пусто. Только встроенный Android SDK.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
