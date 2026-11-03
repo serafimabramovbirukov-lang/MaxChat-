@@ -1,5 +1,6 @@
 package com.swill.maxchat
 
+import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.app.Activity
@@ -13,6 +14,7 @@ class MainActivity : Activity() {
     private lateinit var database: DatabaseReference
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
+    private var userName: String = ""
 
     private val chats = listOf(
         Triple("general", "Общий чат", android.R.drawable.ic_menu_agenda),
@@ -22,10 +24,67 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Проверяем, входил ли пользователь ранее
+        val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
+        userName = prefs.getString("userName", "") ?: ""
+
         database = FirebaseDatabase.getInstance().getReference("chats")
-        showChatListScreen()
+
+        if (userName.isEmpty()) {
+            showLoginScreen()
+        } else {
+            showChatListScreen()
+        }
     }
 
+    // ЭКРАН ВХОДА (Обязательный ввод имени)
+    private fun showLoginScreen() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(64, 64, 64, 64)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.WHITE)
+        }
+
+        val title = TextView(this).apply {
+            text = "Вход в MaxChat"
+            textSize = 24f
+            setPadding(0, 0, 0, 32)
+            gravity = Gravity.CENTER
+        }
+
+        val nameInput = EditText(this).apply { 
+            hint = "Введите ваше настоящее имя" 
+            textSize = 18f
+        }
+
+        val loginButton = Button(this).apply { 
+            text = "Войти" 
+            textSize = 18f
+        }
+
+        layout.addView(title)
+        layout.addView(nameInput)
+        layout.addView(loginButton)
+        setContentView(layout)
+
+        loginButton.setOnClickListener {
+            val name = nameInput.text.toString().trim()
+            if (name.isNotEmpty()) {
+                userName = name
+                // Сохраняем имя на устройстве
+                getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
+                    .edit().putString("userName", name).apply()
+                
+                showChatListScreen()
+            } else {
+                Toast.makeText(this, "Имя обязательно для входа!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // ЭКРАН СПИСКА ЧАТОВ
     private fun showChatListScreen() {
         currentChatId = null
         val mainLayout = LinearLayout(this).apply {
@@ -34,8 +93,8 @@ class MainActivity : Activity() {
         }
 
         val header = TextView(this).apply {
-            text = "MaxChat"
-            textSize = 22f
+            text = "MaxChat (Вы: $userName)"
+            textSize = 20f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#007bff"))
             setPadding(32, 32, 32, 32)
@@ -75,14 +134,7 @@ class MainActivity : Activity() {
                 setTypeface(null, android.graphics.Typeface.BOLD)
             }
 
-            val lastMessage = TextView(this).apply {
-                text = "Нажмите, чтобы открыть"
-                textSize = 14f
-                setTextColor(Color.GRAY)
-            }
-
             textLayout.addView(chatName)
-            textLayout.addView(lastMessage)
             chatLayout.addView(textLayout)
 
             chatLayout.setOnClickListener {
@@ -101,6 +153,7 @@ class MainActivity : Activity() {
         setContentView(mainLayout)
     }
 
+    // ЭКРАН ЧАТА
     private fun showChatScreen(chatName: String, chatId: String) {
         val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
@@ -152,10 +205,15 @@ class MainActivity : Activity() {
 
         setContentView(mainLayout)
 
+        // Отправка сообщения (добавляем имя пользователя)
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
-                val message = mapOf("text" to text, "timestamp" to System.currentTimeMillis())
+                val message = mapOf(
+                    "user" to userName, // <-- Сохраняем имя
+                    "text" to text, 
+                    "timestamp" to System.currentTimeMillis()
+                )
                 database.child(chatId).push().setValue(message)
                 editText.text.clear()
             }
@@ -169,19 +227,39 @@ class MainActivity : Activity() {
             override fun onDataChange(snapshot: DataSnapshot) {
                 messagesLayout.removeAllViews()
                 for (child in snapshot.children) {
+                    val senderName = child.child("user").getValue(String::class.java) ?: "Аноним"
                     val text = child.child("text").getValue(String::class.java) ?: ""
-                    val messageView = TextView(this@MainActivity).apply {
-                        this.text = text
-                        textSize = 18f
-                        setPadding(16, 16, 16, 16)
+                    
+                    // Создаем контейнер для одного сообщения
+                    val messageContainer = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(16, 8, 16, 8)
                         setBackgroundColor(Color.WHITE)
                         val params = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                         )
-                        params.setMargins(0, 8, 0, 8)
+                        params.setMargins(0, 4, 0, 4)
                         layoutParams = params
                     }
-                    messagesLayout.addView(messageView)
+
+                    // Имя отправителя
+                    val nameView = TextView(this@MainActivity).apply {
+                        this.text = senderName
+                        textSize = 12f
+                        setTextColor(Color.parseColor("#007bff")) // Синий цвет для имени
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }
+
+                    // Текст сообщения
+                    val textView = TextView(this@MainActivity).apply {
+                        this.text = text
+                        textSize = 16f
+                        setTextColor(Color.BLACK)
+                    }
+
+                    messageContainer.addView(nameView)
+                    messageContainer.addView(textView)
+                    messagesLayout.addView(messageContainer)
                 }
                 scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
             }
