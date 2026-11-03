@@ -22,12 +22,15 @@
         .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
         .message.my { align-self: flex-end; background: #dcf8c6; border-bottom-right-radius: 2px; }
         .message.other { align-self: flex-start; background: #fff; border-bottom-left-radius: 2px; }
-        .message .sender { font-size: 12px; color: #666; margin-bottom: 3px; font-weight: bold; }
+        .message .sender { font-size: 12px; color: #007bff; margin-bottom: 3px; font-weight: bold; }
         
         #input-area { display: flex; padding: 10px; background: #f0f0f0; }
         #input-area input { flex: 1; padding: 12px; border: none; border-radius: 20px; font-size: 16px; outline: none; }
         #input-area button { background: #007bff; color: #fff; border: none; border-radius: 50%; width: 45px; height: 45px; margin-left: 10px; cursor: pointer; font-size: 18px; display: flex; justify-content: center; align-items: center; }
     </style>
+    <!-- Подключаем Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
     <div id="app">
@@ -52,65 +55,97 @@
     </div>
 
     <script>
-        let ws;
+        // Твои конфигурационные данные Firebase (из google-services.json)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBjRTWj1Po-L0g1CRfGmofuqarnHV66Ewo",
+            authDomain: "maxchat-5e82f.firebaseapp.com",
+            databaseURL: "https://maxchat-5e82f-default-rtdb.firebaseio.com",
+            projectId: "maxchat-5e82f",
+            storageBucket: "maxchat-5e82f.firebasestorage.app",
+            messagingSenderId: "321397267482",
+            appId: "1:321397267482:android:98e6e543adaa02d99a45a3"
+        };
+
+        // Инициализация Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database().ref("chats/general"); // Слушаем только "Общий чат"
+
         let username = "";
-        const chatRoom = "general"; // Пока один общий чат
+        let lastMessageTime = 0;
 
         function login() {
             const nameInput = document.getElementById("username").value.trim();
             if (nameInput.length > 0) {
                 username = nameInput;
+                localStorage.setItem("maxchat_name", username); // Сохраняем имя в браузере
                 document.getElementById("login-screen").style.display = "none";
                 document.getElementById("chat-screen").style.display = "flex";
-                connectWebSocket();
+                listenForMessages();
             }
         }
 
-        function connectWebSocket() {
-            // Подключаемся к нашему серверу на RelaxDev
-            ws = new WebSocket("wss://maxchat.relaxdev.ru/");
+        // Если имя уже сохранено, пропускаем вход
+        window.onload = function() {
+            const savedName = localStorage.getItem("maxchat_name");
+            if (savedName) {
+                username = savedName;
+                document.getElementById("login-screen").style.display = "none";
+                document.getElementById("chat-screen").style.display = "flex";
+                listenForMessages();
+            }
+        };
 
-            ws.onopen = function() {
-                console.log("Подключено к серверу");
-                // Сообщаем серверу, в какую комнату мы зашли
-                ws.send(JSON.stringify({ room: chatRoom }));
-            };
+        function listenForMessages() {
+            database.on('value', (snapshot) => {
+                const messagesContainer = document.getElementById("messages");
+                messagesContainer.innerHTML = ""; // Очищаем экран
 
-            ws.onmessage = function(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.text) {
-                        addMessageToUI(data.user || "Аноним", data.text, false);
+                snapshot.forEach((childSnapshot) => {
+                    const msg = childSnapshot.val();
+                    const sender = msg.user || "Аноним";
+                    const text = msg.text || "";
+                    const timestamp = msg.timestamp || 0;
+
+                    const isMine = (sender === username);
+                    
+                    const msgDiv = document.createElement("div");
+                    msgDiv.className = "message " + (isMine ? "my" : "other");
+                    
+                    if (!isMine) {
+                        const senderDiv = document.createElement("div");
+                        senderDiv.className = "sender";
+                        senderDiv.textContent = sender;
+                        msgDiv.appendChild(senderDiv);
                     }
-                } catch (e) {
-                    console.error("Ошибка парсинга:", e);
-                }
-            };
 
-            ws.onclose = function() {
-                console.log("Соединение закрыто. Переподключение...");
-                setTimeout(connectWebSocket, 3000);
-            };
+                    const textDiv = document.createElement("div");
+                    textDiv.textContent = text;
+                    msgDiv.appendChild(textDiv);
 
-            ws.onerror = function(err) {
-                console.error("Ошибка WebSocket:", err);
-            };
+                    messagesContainer.appendChild(msgDiv);
+
+                    if (timestamp > lastMessageTime) {
+                        lastMessageTime = timestamp;
+                    }
+                });
+                
+                // Прокручиваем вниз
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
         }
 
         function sendMessage() {
             const input = document.getElementById("message-input");
             const text = input.value.trim();
             
-            if (text.length > 0 && ws.readyState === WebSocket.OPEN) {
-                const msg = {
-                    room: chatRoom,
+            if (text.length > 0) {
+                const messageData = {
                     user: username,
-                    text: text
+                    text: text,
+                    timestamp: Date.now()
                 };
-                ws.send(JSON.stringify(msg));
-                
-                // Сразу показываем свое сообщение
-                addMessageToUI(username, text, true);
+                // Отправляем в Firebase (сообщение появится через слушатель)
+                database.push(messageData);
                 input.value = "";
             }
         }
@@ -119,26 +154,6 @@
             if (e.key === "Enter") {
                 sendMessage();
             }
-        }
-
-        function addMessageToUI(sender, text, isMine) {
-            const messagesContainer = document.getElementById("messages");
-            const msgDiv = document.createElement("div");
-            msgDiv.className = "message " + (isMine ? "my" : "other");
-            
-            if (!isMine) {
-                const senderDiv = document.createElement("div");
-                senderDiv.className = "sender";
-                senderDiv.textContent = sender;
-                msgDiv.appendChild(senderDiv);
-            }
-
-            const textDiv = document.createElement("div");
-            textDiv.textContent = text;
-            msgDiv.appendChild(textDiv);
-
-            messagesContainer.appendChild(msgDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
     </script>
 </body>
