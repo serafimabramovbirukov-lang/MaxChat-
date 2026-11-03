@@ -26,5 +26,5 @@ android {
 }
 
 dependencies {
-    // Здесь пусто, так как мы используем только встроенные классы Java
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
