@@ -78,7 +78,8 @@ class MainActivity : Activity() {
     private fun connectToServer() {
         thread {
             try {
-                val host = "mysty-dawn-51cd.serafimabramovbirukov.workers.dev"
+                // Новый адрес сервера
+                val host = "lucky-bird-6078.serafimabramovbirukov.workers.dev"
                 val rawSocket = Socket(host, 443)
                 val sslSocket = SSLSocketFactory.getDefault().createSocket(rawSocket, host, 443, true) as javax.net.ssl.SSLSocket
                 
