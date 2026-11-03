@@ -71,15 +71,10 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        // ИСПОЛЬЗУЕМ https:// ВМЕСТО wss://
-        val url = "https://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/ws"
+        // Правильный адрес: wss:// и без /ws на конце
+        val url = "wss://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/"
         
-        // Создаем запрос с заголовком Upgrade
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("Upgrade", "websocket")
-            .addHeader("Connection", "Upgrade")
-            .build()
+        val request = Request.Builder().url(url).build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
