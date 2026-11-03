@@ -83,7 +83,7 @@ class MainActivity : Activity() {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                addMessage("Система: Ошибка подключения")
+                addMessage("Ошибка: ${t.message}")
             }
         })
     }
