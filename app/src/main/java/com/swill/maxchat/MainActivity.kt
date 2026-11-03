@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.app.Activity
+import android.app.AlertDialog
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -38,7 +39,7 @@ class MainActivity : Activity() {
         }
     }
 
-    // ЭКРАН ВХОДА (Обязательный ввод имени)
+    // ЭКРАН ВХОДА
     private fun showLoginScreen() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -73,7 +74,6 @@ class MainActivity : Activity() {
             val name = nameInput.text.toString().trim()
             if (name.isNotEmpty()) {
                 userName = name
-                // Сохраняем имя на устройстве
                 getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
                     .edit().putString("userName", name).apply()
                 
@@ -157,6 +157,7 @@ class MainActivity : Activity() {
     private fun showChatScreen(chatName: String, chatId: String) {
         val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
+        // Шапка с кнопкой очистки
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 32, 16, 16)
@@ -172,12 +173,21 @@ class MainActivity : Activity() {
             textSize = 20f
             setTextColor(Color.WHITE)
             setPadding(16, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+        }
+
+        val clearButton = Button(this).apply { 
+            text = "Очистить" 
+            setTextColor(Color.RED)
+            setBackgroundColor(Color.WHITE)
         }
 
         headerLayout.addView(backButton)
         headerLayout.addView(headerTitle)
+        headerLayout.addView(clearButton)
         mainLayout.addView(headerLayout)
 
+        // Область сообщений
         scrollView = ScrollView(this)
         messagesLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -190,6 +200,7 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f
         ))
 
+        // Поле ввода
         val inputLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 16, 16, 16)
@@ -205,18 +216,36 @@ class MainActivity : Activity() {
 
         setContentView(mainLayout)
 
-        // Отправка сообщения (добавляем имя пользователя)
+        // Отправка сообщения
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
                 val message = mapOf(
-                    "user" to userName, // Сохраняем имя
+                    "user" to userName,
                     "text" to text, 
                     "timestamp" to System.currentTimeMillis()
                 )
                 database.child(chatId).push().setValue(message)
                 editText.text.clear()
             }
+        }
+
+        // Логика очистки чата
+        clearButton.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Очистить чат?")
+                .setMessage("Вы уверены, что хотите удалить все сообщения в этом чате?")
+                .setPositiveButton("Да") { _, _ ->
+                    database.child(chatId).removeValue()
+                        .addOnSuccessListener {
+                            Toast.makeText(this, "Чат очищен", Toast.LENGTH_SHORT).show()
+                        }
+                        .addOnFailureListener { e ->
+                            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
         }
 
         listenForMessages(chatId)
@@ -230,7 +259,6 @@ class MainActivity : Activity() {
                     val senderName = child.child("user").getValue(String::class.java) ?: "Аноним"
                     val text = child.child("text").getValue(String::class.java) ?: ""
                     
-                    // Создаем контейнер для одного сообщения
                     val messageContainer = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         setPadding(16, 8, 16, 8)
@@ -242,15 +270,13 @@ class MainActivity : Activity() {
                         layoutParams = params
                     }
 
-                    // Имя отправителя
                     val nameView = TextView(this@MainActivity).apply {
                         this.text = senderName
                         textSize = 12f
-                        setTextColor(Color.parseColor("#007bff")) // Синий цвет для имени
+                        setTextColor(Color.parseColor("#007bff"))
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     }
 
-                    // Текст сообщения
                     val textView = TextView(this@MainActivity).apply {
                         this.text = text
                         textSize = 16f
@@ -261,7 +287,6 @@ class MainActivity : Activity() {
                     messageContainer.addView(textView)
                     messagesLayout.addView(messageContainer)
                 }
-                // Прокручиваем вниз
                 scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
             }
 
