@@ -71,10 +71,14 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        // Адрес с wss:// и без лишних путей
-        val url = "wss://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/"
+        // Используем https:// и добавляем заголовки для обхода бага Cloudflare
+        val url = "https://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/"
         
-        val request = Request.Builder().url(url).build()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Upgrade", "websocket")
+            .addHeader("Connection", "Upgrade")
+            .build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
