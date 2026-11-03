@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.swill.maxchat"
-    compileSdk = 35
+    compileSdk = 35 // <-- Изменили с 34 на 35
     
     defaultConfig {
         applicationId = "com.swill.maxchat"
