@@ -7,11 +7,12 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import kotlin.concurrent.thread
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.Socket
-import kotlin.concurrent.thread
+import javax.net.ssl.SSLSocketFactory
 
 class MainActivity : Activity() {
     private lateinit var messagesLayout: LinearLayout
@@ -77,10 +78,9 @@ class MainActivity : Activity() {
     private fun connectToServer() {
         thread {
             try {
-                // Подключаемся к Cloudflare через порт 443 (SSL)
-                val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
-                val rawSocket = Socket("mysty-dawn-51cd.serafimabrambirukov.workers.dev", 443)
-                val sslSocket = sslSocketFactory.createSocket(rawSocket, "mysty-dawn-51cd.serafimabrambirukov.workers.dev", 443, true) as javax.net.ssl.SSLSocket
+                val host = "mysty-dawn-51cd.serafimabramovbirukov.workers.dev"
+                val rawSocket = Socket(host, 443)
+                val sslSocket = SSLSocketFactory.getDefault().createSocket(rawSocket, host, 443, true) as javax.net.ssl.SSLSocket
                 
                 socket = sslSocket
                 out = PrintWriter(sslSocket.getOutputStream(), true)
@@ -88,7 +88,6 @@ class MainActivity : Activity() {
 
                 addMessage("Система: Подключено к серверу!")
                 
-                // Слушаем входящие сообщения
                 var line: String?
                 while (reader?.readLine().also { line = it } != null) {
                     addMessage(line ?: "")
