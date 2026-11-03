@@ -27,4 +27,5 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.compose.ui:ui:1.7.2")
     implementation("androidx.compose.foundation:foundation:1.7.2")
+    implementation("androidx.compose.foundation:foundation-layout:1.7.2")
 }
