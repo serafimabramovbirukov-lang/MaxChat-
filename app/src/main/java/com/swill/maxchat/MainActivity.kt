@@ -7,16 +7,16 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.WebSocket
-import java.util.concurrent.CompletionStage
+import okhttp3.*
+import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
     private var webSocket: WebSocket? = null
-    private val client = HttpClient.newHttpClient()
+    private val client = OkHttpClient.Builder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,43 +61,31 @@ class MainActivity : Activity() {
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
-                // Отправляем сообщение на сервер
-                webSocket?.sendText(text, true)
+                webSocket?.send(text)
                 editText.text.clear()
             }
         }
 
         setContentView(mainLayout)
-        
-        // Подключаемся к серверу Cloudflare
         connectToServer()
     }
 
     private fun connectToServer() {
-        val serverUri = URI.create("wss://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/")
+        val request = Request.Builder().url("wss://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/").build()
         
-        client.newWebSocketBuilder()
-            .buildAsync(serverUri, object : WebSocket.Listener {
-                override fun onOpen(webSocket: WebSocket) {
-                    addMessage("Система: Подключено к серверу!")
-                }
-
-                override fun onText(webSocket: WebSocket, data: CharSequence, last: Boolean): CompletionStage<*>? {
-                    runOnUiThread {
-                        addMessage(data.toString())
-                    }
-                    return super.onText(webSocket, data, last)
-                }
-
-                override fun onError(webSocket: WebSocket, error: Throwable) {
-                    runOnUiThread {
-                        addMessage("Система: Ошибка подключения")
-                    }
-                }
-            })
-            .thenAccept { ws ->
-                webSocket = ws
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                addMessage("Система: Подключено к серверу!")
             }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                addMessage(text)
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                addMessage("Система: Ошибка подключения")
+            }
+        })
     }
 
     private fun addMessage(text: String) {
@@ -114,6 +102,6 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        webSocket?.sendClose(1000, "Bye")
+        webSocket?.close(1000, "Bye")
     }
 }
