@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import okhttp3.*
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
@@ -17,6 +18,10 @@ class MainActivity : Activity() {
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+    
+    private var isConnecting = false
+    // Текущая комната (по умолчанию "general")
+    private var currentRoom = "general"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,6 +30,19 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
         }
+
+        // --- Поле для ввода названия комнаты ---
+        val roomInput = EditText(this).apply {
+            hint = "Название комнаты (например: Друзья)"
+            setText(currentRoom)
+        }
+        mainLayout.addView(roomInput)
+
+        // --- Кнопка смены комнаты ---
+        val joinButton = Button(this).apply {
+            text = "Сменить комнату"
+        }
+        mainLayout.addView(joinButton)
 
         scrollView = ScrollView(this)
         messagesLayout = LinearLayout(this).apply {
@@ -58,10 +76,30 @@ class MainActivity : Activity() {
 
         mainLayout.addView(inputLayout)
 
+        // Обработка смены комнаты
+        joinButton.setOnClickListener {
+            val newRoom = roomInput.text.toString().trim()
+            if (newRoom.isNotEmpty()) {
+                currentRoom = newRoom
+                addMessage("Система: Вы перешли в комнату '$currentRoom'")
+                
+                // Отправляем серверу уведомление о смене комнаты
+                val json = JSONObject()
+                json.put("room", currentRoom)
+                webSocket?.send(json.toString())
+            }
+        }
+
+        // Обработка отправки сообщения
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
-                webSocket?.send(text)
+                // Формируем JSON: { "room": "Друзья", "text": "Привет" }
+                val json = JSONObject()
+                json.put("room", currentRoom)
+                json.put("text", text)
+                
+                webSocket?.send(json.toString())
                 editText.text.clear()
             }
         }
@@ -71,20 +109,45 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        // Новый адрес от RelaxDev
+        if (isConnecting) return
+        isConnecting = true
+        
         val request = Request.Builder().url("wss://maxchat.relaxdev.ru/").build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                isConnecting = false
                 addMessage("Система: Подключено к серверу!")
+                
+                // При подключении сразу сообщаем, в какой мы комнате
+                val json = JSONObject()
+                json.put("room", currentRoom)
+                webSocket.send(json.toString())
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                addMessage(text)
+                try {
+                    // Сервер присылает JSON: { "room": "Друзья", "text": "Привет" }
+                    val json = JSONObject(text)
+                    val room = json.getString("room")
+                    val msgText = json.getString("text")
+                    
+                    // Показываем сообщение только если оно из нашей комнаты
+                    if (room == currentRoom) {
+                        addMessage("[$room] $msgText")
+                    }
+                } catch (e: Exception) {
+                    addMessage(text)
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                addMessage("Ошибка: ${t.message}")
+                isConnecting = false
+                addMessage("Ошибка: ${t.message}. Переподключение...")
+                
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    connectToServer()
+                }, 3000)
             }
         })
     }
