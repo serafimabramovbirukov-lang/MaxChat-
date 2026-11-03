@@ -13,13 +13,12 @@ class MainActivity : Activity() {
     private lateinit var database: DatabaseReference
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
-    private lateinit var chatListLayout: LinearLayout
 
-    // Список наших чатов (можно добавлять свои)
+    // Список чатов: ID, Название, Иконка (из стандартных), Последнее сообщение (для теста)
     private val chats = listOf(
-        Triple("general", "Общий чат", "#4CAF50"),
-        Triple("friends", "Друзья", "#2196F3"),
-        Triple("work", "Работа", "#FF9800")
+        Triple("general", "Общий чат", android.R.drawable.ic_menu_agenda),
+        Triple("friends", "Друзья", android.R.drawable.ic_menu_myplaces),
+        Triple("work", "Работа", android.R.drawable.ic_menu_manage)
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,54 +27,78 @@ class MainActivity : Activity() {
         showChatListScreen()
     }
 
-    // Экран со списком чатов
+    // Экран списка чатов (как в Telegram/WhatsApp)
     private fun showChatListScreen() {
         currentChatId = null
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 16, 16, 16)
+            setBackgroundColor(Color.WHITE)
         }
 
-        val title = TextView(this).apply {
-            text = "Чаты"
-            textSize = 24f
-            setPadding(0, 0, 0, 32)
+        // Шапка приложения (синяя)
+        val header = TextView(this).apply {
+            text = "MaxChat"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#007bff"))
+            setPadding(32, 32, 32, 32)
         }
-        mainLayout.addView(title)
+        mainLayout.addView(header)
 
-        chatListLayout = LinearLayout(this).apply {
+        val scrollView = ScrollView(this)
+        val chatListLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
-        for ((id, name, colorHex) in chats) {
+        // Проходим по списку чатов и создаем красивые элементы
+        for ((id, name, iconRes) in chats) {
             val chatLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 16, 0, 16)
+                setPadding(32, 32, 32, 32)
                 gravity = Gravity.CENTER_VERTICAL
+                setBackgroundColor(Color.WHITE)
             }
 
-            // Аватарка (цветной кружок с первой буквой)
-            val avatar = TextView(this).apply {
-                text = name.first().toString()
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                setBackgroundColor(Color.parseColor(colorHex))
-                width = 100
-                height = 100
+            // Аватарка (картинка)
+            val avatar = ImageView(this).apply {
+                setImageResource(iconRes)
+                setBackgroundColor(Color.parseColor("#E0E0E0"))
+                val params = LinearLayout.LayoutParams(120, 120)
+                params.setMargins(0, 0, 32, 0)
+                layoutParams = params
             }
-            
-            val avatarParams = LinearLayout.LayoutParams(100, 100)
-            avatarParams.setMargins(0, 0, 32, 0)
-            avatar.layoutParams = avatarParams
+            chatLayout.addView(avatar)
+
+            // Текст: Название и последнее сообщение
+            val textLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+            }
 
             val chatName = TextView(this).apply {
                 text = name
                 textSize = 18f
+                setTextColor(Color.BLACK)
+                setTypeface(null, android.graphics.Typeface.BOLD)
             }
 
-            chatLayout.addView(avatar)
-            chatLayout.addView(chatName)
+            val lastMessage = TextView(this).apply {
+                text = "Нажмите, чтобы открыть" // Заглушка, потом заменим на реальное сообщение
+                textSize = 14f
+                setTextColor(Color.GRAY)
+            }
+
+            textLayout.addView(chatName)
+            textLayout.addView(lastMessage)
+            chatLayout.addView(textLayout)
+
+            // Время (справа)
+            val timeView = TextView(this).apply {
+                text = "12:00" // Заглушка, потом сделаем реальное время
+                textSize = 12f
+                setTextColor(Color.GRAY)
+            }
+            chatLayout.addView(timeView)
 
             chatLayout.setOnClickListener {
                 currentChatId = id
@@ -83,14 +106,16 @@ class MainActivity : Activity() {
             }
 
             chatListLayout.addView(chatLayout)
-            
+
+            // Разделитель (тонкая линия)
             val divider = View(this).apply {
-                setBackgroundColor(Color.LTGRAY)
+                setBackgroundColor(Color.parseColor("#E0E0E0"))
             }
             chatListLayout.addView(divider, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
 
-        mainLayout.addView(chatListLayout)
+        scrollView.addView(chatListLayout)
+        mainLayout.addView(scrollView)
         setContentView(mainLayout)
     }
 
@@ -100,21 +125,20 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Шапка чата с кнопкой "Назад"
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 32, 16, 16)
-            setBackgroundColor(Color.parseColor("#E0E0E0"))
+            setBackgroundColor(Color.parseColor("#007bff"))
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         val backButton = Button(this).apply { text = "<" }
-        backButton.setOnClickListener {
-            showChatListScreen()
-        }
+        backButton.setOnClickListener { showChatListScreen() }
         
         val headerTitle = TextView(this).apply {
             text = chatName
             textSize = 20f
+            setTextColor(Color.WHITE)
             setPadding(16, 0, 0, 0)
         }
 
@@ -122,11 +146,12 @@ class MainActivity : Activity() {
         headerLayout.addView(headerTitle)
         mainLayout.addView(headerLayout)
 
-        // Область сообщений
+        // Область сообщений (светло-серый фон, как в мессенджерах)
         scrollView = ScrollView(this)
         messagesLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(16, 16, 16, 16)
+            setBackgroundColor(Color.parseColor("#f0f0f0"))
         }
         scrollView.addView(messagesLayout)
         
@@ -136,10 +161,10 @@ class MainActivity : Activity() {
             1.0f
         ))
 
-        // Поле ввода
         val inputLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 16, 16, 16)
+            setBackgroundColor(Color.WHITE)
         }
 
         val editText = EditText(this).apply { hint = "Сообщение..." }
@@ -155,7 +180,6 @@ class MainActivity : Activity() {
 
         setContentView(mainLayout)
 
-        // Отправка сообщения
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
@@ -165,7 +189,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // Слушаем сообщения именно этого чата
         listenForMessages(chatId)
     }
 
@@ -178,7 +201,14 @@ class MainActivity : Activity() {
                     val messageView = TextView(this@MainActivity).apply {
                         this.text = text
                         textSize = 18f
-                        setPadding(0, 8, 0, 8)
+                        setPadding(16, 16, 16, 16)
+                        setBackgroundColor(Color.WHITE)
+                        val params = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        params.setMargins(0, 8, 0, 8)
+                        layoutParams = params
                     }
                     messagesLayout.addView(messageView)
                 }
