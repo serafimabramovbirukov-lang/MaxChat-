@@ -20,7 +20,7 @@ class MainActivity : Activity() {
     private var myPhone: String = ""
     private var myName: String = ""
     
-    // ВАЖНО: Твой номер (админ/поддержка)
+    // Твой номер (админ/поддержка)
     private val adminPhone = "+79111426979" 
 
     private val chatHistory = mutableListOf<Pair<String, String>>()
@@ -44,7 +44,7 @@ class MainActivity : Activity() {
         }
     }
 
-    // --- ЭКРАН ВХОДА (Без изменений) ---
+    // --- ЭКРАН ВХОДА/РЕГИСТРАЦИИ ---
     private fun showAuthScreen() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(64, 64, 64, 64); gravity = Gravity.CENTER; setBackgroundColor(Color.WHITE)
@@ -127,30 +127,39 @@ class MainActivity : Activity() {
         val scrollView = ScrollView(this)
         val chatListLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        // 1. Кнопка "Написать в поддержку" (для обычных юзеров) ИЛИ Список запросов (для админа)
+        // 1. ЗАПРОСЫ В ПОДДЕРЖКУ (Только для админа)
         if (myPhone == adminPhone) {
-            // Если я админ - показываю список всех, кто мне писал
-            val supportHeader = TextView(this).apply { text = "Запросы в поддержку:"; textSize = 16f; setPadding(32, 16, 32, 16); setTextColor(Color.GRAY) }
+            val supportHeader = TextView(this).apply { text = "Запросы в поддержку:"; textSize = 16f; setPadding(32, 16, 32, 16); setTextColor(Color.GRAY); setTypeface(null, android.graphics.Typeface.BOLD) }
             chatListLayout.addView(supportHeader)
             
-            // Слушаем все чаты, которые начинаются на "support_"
             database.addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    chatListLayout.removeAllViews()
-                    chatListLayout.addView(supportHeader)
-
+                    // Очищаем только запросы (начиная с индекса 1, так как 0 - заголовок)
+                    // Но проще перерисовать весь список, сохранив историю
+                    // В реальном приложении лучше использовать RecyclerView, но для простоты перерисуем всё
+                    // Однако, чтобы не сбить историю, мы просто добавим запросы в начало.
+                    
+                    // Для простоты этот слушатель будет добавлять запросы, но при перерисовке списка они могут дублироваться.
+                    // Поэтому мы просто добавим их один раз при загрузке.
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+            
+            // Упрощенный вывод запросов (без слушателя, чтобы не было дублей)
+            database.addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
                     for (child in snapshot.children) {
                         val chatId = child.key ?: continue
                         if (chatId.startsWith("support_")) {
                             val userPhone = chatId.replace("support_", "")
-                            if (userPhone != adminPhone) { // Себя не показываем
+                            if (userPhone != adminPhone) {
                                 val requestLayout = LinearLayout(this@MainActivity).apply {
                                     orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL
                                 }
                                 val icon = ImageView(this@MainActivity).apply {
-                                    setImageResource(android.R.drawable.ic_menu_help); layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) }
+                                    setImageResource(android.R.drawable.ic_menu_help); layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 32, 0) }
                                 }
-                                val text = TextView(this@MainActivity).apply { this.text = "Запрос от $userPhone"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD) }
+                                val text = TextView(this@MainActivity).apply { this.text = "Запрос от $userPhone"; textSize = 16f }
                                 requestLayout.addView(icon); requestLayout.addView(text)
                                 requestLayout.setOnClickListener { showChatScreen("Поддержка: $userPhone", chatId) }
                                 chatListLayout.addView(requestLayout)
@@ -162,21 +171,17 @@ class MainActivity : Activity() {
                 override fun onCancelled(error: DatabaseError) {}
             })
         } else {
-            // Если я обычный юзер - у меня просто кнопка "Написать в поддержку"
+            // Если не админ - кнопка "Написать в поддержку"
             val supportChat = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
             val supportIcon = ImageView(this).apply { setImageResource(android.R.drawable.ic_menu_help); layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) } }
             val supportText = TextView(this).apply { text = "Поддержка"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD) }
             supportChat.addView(supportIcon); supportChat.addView(supportText)
-            supportChat.setOnClickListener { 
-                // Открываем личный чат с админом
-                val chatId = "support_$myPhone"
-                showChatScreen("Поддержка", chatId) 
-            }
+            supportChat.setOnClickListener { showChatScreen("Поддержка", "support_$myPhone") }
             chatListLayout.addView(supportChat)
             chatListLayout.addView(View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
 
-        // 2. Общий чат
+        // 2. ОБЩИЙ ЧАТ (Всегда)
         val generalChat = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
         val generalIcon = ImageView(this).apply { setImageResource(android.R.drawable.ic_menu_agenda); layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) } }
         val generalText = TextView(this).apply { text = "Общий чат"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD) }
@@ -185,7 +190,7 @@ class MainActivity : Activity() {
         chatListLayout.addView(generalChat)
         chatListLayout.addView(View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
 
-        // 3. Личные чаты
+        // 3. ЛИЧНЫЕ ЧАТЫ (История)
         for ((id, name) in chatHistory) {
             if (id == "general" || id.startsWith("support_")) continue
             val chatLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
@@ -246,7 +251,7 @@ class MainActivity : Activity() {
 
         headerLayout.addView(backButton); headerLayout.addView(headerTitle)
         
-        // Кнопка "Удалить чат" для админа (чтобы убрать запрос)
+        // Кнопка "Удалить" для админа
         if (myPhone == adminPhone && chatId.startsWith("support_")) {
             val deleteButton = Button(this).apply { text = "X"; setTextColor(Color.RED); setBackgroundColor(Color.WHITE) }
             headerLayout.addView(deleteButton)
