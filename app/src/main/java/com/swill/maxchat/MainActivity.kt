@@ -71,7 +71,8 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        val request = Request.Builder().url("wss://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/").build()
+        // ВАЖНО: Добавлен /ws в конце адреса!
+        val request = Request.Builder().url("wss://mysty-dawn-51cd.serafimabramovbirukov.workers.dev/ws").build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
