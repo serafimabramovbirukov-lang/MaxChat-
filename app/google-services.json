@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "321397267482",
+    "project_id": "maxchat-5e82f",
+    "storage_bucket": "maxchat-5e82f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:321397267482:android:98e6e543adaa02d99a45a3",
+        "android_client_info": {
+          "package_name": "com.swill.maxchat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjRTWj1Po-L0g1CRfGmofuqarnHV66Ewo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
