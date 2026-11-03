@@ -71,8 +71,8 @@ class MainActivity : Activity() {
     }
 
     private fun connectToServer() {
-        // Добавлен путь /ws в конце адреса
-        val request = Request.Builder().url("wss://maxchat.isodomain.tech/ws").build()
+        // Новый адрес от RelaxDev
+        val request = Request.Builder().url("wss://maxchat.relaxdev.ru/").build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
