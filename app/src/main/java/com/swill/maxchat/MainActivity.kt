@@ -11,36 +11,67 @@ import android.widget.*
 import com.google.firebase.database.*
 
 class MainActivity : Activity() {
-    private var currentChatId: String? = null
     private lateinit var database: DatabaseReference
+    private lateinit var usersRef: DatabaseReference
     private lateinit var messagesLayout: LinearLayout
     private lateinit var scrollView: ScrollView
-    private var userName: String = ""
-
-    private val chats = listOf(
-        Triple("general", "Общий чат", android.R.drawable.ic_menu_agenda),
-        Triple("friends", "Друзья", android.R.drawable.ic_menu_myplaces),
-        Triple("work", "Работа", android.R.drawable.ic_menu_manage)
-    )
+    
+    private var currentChatId: String? = null
+    private var myPhone: String = ""
+    private var myName: String = ""
+    
+    // Список для хранения истории чатов (ID и Имя собеседника)
+    private val chatHistory = mutableListOf<Pair<String, String>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Проверяем, входил ли пользователь ранее
-        val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
-        userName = prefs.getString("userName", "") ?: ""
-
         database = FirebaseDatabase.getInstance().getReference("chats")
+        usersRef = FirebaseDatabase.getInstance().getReference("users")
 
-        if (userName.isEmpty()) {
-            showLoginScreen()
+        val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
+        myPhone = prefs.getString("phone", "") ?: ""
+        myName = prefs.getString("name", "") ?: ""
+
+        // Загружаем сохраненную историю
+        loadChatHistory()
+
+        if (myPhone.isEmpty() || myName.isEmpty()) {
+            showRegistrationScreen()
         } else {
             showChatListScreen()
         }
     }
 
-    // ЭКРАН ВХОДА
-    private fun showLoginScreen() {
+    // Сохранение и загрузка истории чатов
+    private fun saveChatHistory() {
+        val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
+        val historyString = chatHistory.joinToString("|") { "${it.first}:${it.second}" }
+        prefs.edit().putString("chatHistory", historyString).apply()
+    }
+
+    private fun loadChatHistory() {
+        val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
+        val historyString = prefs.getString("chatHistory", "") ?: ""
+        if (historyString.isNotEmpty()) {
+            chatHistory.clear()
+            historyString.split("|").forEach {
+                val parts = it.split(":")
+                if (parts.size == 2) chatHistory.add(Pair(parts[0], parts[1]))
+            }
+        }
+    }
+
+    private fun addChatToHistory(chatId: String, chatName: String) {
+        // Если чата еще нет в истории, добавляем
+        if (chatHistory.none { it.first == chatId }) {
+            chatHistory.add(Pair(chatId, chatName))
+            saveChatHistory()
+        }
+    }
+
+    // --- ЭКРАН РЕГИСТРАЦИИ ---
+    private fun showRegistrationScreen() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
@@ -48,43 +79,36 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
         }
 
-        val title = TextView(this).apply {
-            text = "Вход в MaxChat"
-            textSize = 24f
-            setPadding(0, 0, 0, 32)
-            gravity = Gravity.CENTER
-        }
-
-        val nameInput = EditText(this).apply { 
-            hint = "Введите ваше настоящее имя" 
-            textSize = 18f
-        }
-
-        val loginButton = Button(this).apply { 
-            text = "Войти" 
-            textSize = 18f
-        }
+        val title = TextView(this).apply { text = "Регистрация"; textSize = 24f; setPadding(0, 0, 0, 32) }
+        val nameInput = EditText(this).apply { hint = "Ваше имя"; textSize = 18f }
+        val phoneInput = EditText(this).apply { hint = "Ваш номер (например, +79991234567)"; textSize = 18f }
+        val registerButton = Button(this).apply { text = "Зарегистрироваться"; textSize = 18f }
 
         layout.addView(title)
         layout.addView(nameInput)
-        layout.addView(loginButton)
+        layout.addView(phoneInput)
+        layout.addView(registerButton)
         setContentView(layout)
 
-        loginButton.setOnClickListener {
+        registerButton.setOnClickListener {
             val name = nameInput.text.toString().trim()
-            if (name.isNotEmpty()) {
-                userName = name
+            val phone = phoneInput.text.toString().trim()
+
+            if (name.isNotEmpty() && phone.isNotEmpty()) {
+                myName = name
+                myPhone = phone
                 getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
-                    .edit().putString("userName", name).apply()
-                
+                    .edit().putString("name", name).putString("phone", phone).apply()
+
+                usersRef.child(phone).setValue(mapOf("name" to name, "phone" to phone))
                 showChatListScreen()
             } else {
-                Toast.makeText(this, "Имя обязательно для входа!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Заполните все поля!", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // ЭКРАН СПИСКА ЧАТОВ
+    // --- ЭКРАН СПИСКА ЧАТОВ ---
     private fun showChatListScreen() {
         currentChatId = null
         val mainLayout = LinearLayout(this).apply {
@@ -92,56 +116,85 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
         }
 
-        val header = TextView(this).apply {
-            text = "MaxChat (Вы: $userName)"
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#007bff"))
+        // Шапка
+        val headerLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             setPadding(32, 32, 32, 32)
+            setBackgroundColor(Color.parseColor("#007bff"))
+            gravity = Gravity.CENTER_VERTICAL
         }
-        mainLayout.addView(header)
 
+        val titleText = TextView(this).apply {
+            text = "MaxChat"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+        }
+
+        val searchButton = Button(this).apply {
+            text = "Найти"
+            setTextColor(Color.parseColor("#007bff"))
+            setBackgroundColor(Color.WHITE)
+        }
+
+        headerLayout.addView(titleText)
+        headerLayout.addView(searchButton)
+        mainLayout.addView(headerLayout)
+
+        // Список чатов
         val scrollView = ScrollView(this)
         val chatListLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
-        for ((id, name, iconRes) in chats) {
+        // 1. Общий чат (всегда в списке)
+        val generalChat = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(32, 32, 32, 32)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val generalIcon = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_menu_agenda)
+            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) }
+        }
+        val generalText = TextView(this).apply { text = "Общий чат"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD) }
+        generalChat.addView(generalIcon)
+        generalChat.addView(generalText)
+        generalChat.setOnClickListener { 
+            addChatToHistory("general", "Общий чат")
+            showChatScreen("Общий чат", "general") 
+        }
+        chatListLayout.addView(generalChat)
+        
+        val divider1 = View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }
+        chatListLayout.addView(divider1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+
+        // 2. Личные чаты из истории
+        for ((id, name) in chatHistory) {
+            if (id == "general") continue // Общий уже добавили
+
             val chatLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(32, 32, 32, 32)
                 gravity = Gravity.CENTER_VERTICAL
             }
 
-            val avatar = ImageView(this).apply {
-                setImageResource(iconRes)
-                setBackgroundColor(Color.parseColor("#E0E0E0"))
-                val params = LinearLayout.LayoutParams(120, 120)
-                params.setMargins(0, 0, 32, 0)
-                layoutParams = params
-            }
-            chatLayout.addView(avatar)
-
-            val textLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+            val icon = ImageView(this).apply {
+                setImageResource(android.R.drawable.ic_menu_myplaces)
+                layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) }
             }
 
-            val chatName = TextView(this).apply {
+            val chatNameText = TextView(this).apply { 
                 text = name
                 textSize = 18f
-                setTextColor(Color.BLACK)
                 setTypeface(null, android.graphics.Typeface.BOLD)
             }
 
-            textLayout.addView(chatName)
-            chatLayout.addView(textLayout)
-
+            chatLayout.addView(icon)
+            chatLayout.addView(chatNameText)
             chatLayout.setOnClickListener {
-                currentChatId = id
                 showChatScreen(name, id)
             }
-
             chatListLayout.addView(chatLayout)
             
             val divider = View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }
@@ -151,13 +204,53 @@ class MainActivity : Activity() {
         scrollView.addView(chatListLayout)
         mainLayout.addView(scrollView)
         setContentView(mainLayout)
+
+        searchButton.setOnClickListener {
+            showSearchDialog()
+        }
     }
 
-    // ЭКРАН ЧАТА
+    // --- ДИАЛОГ ПОИСКА ---
+    private fun showSearchDialog() {
+        val input = EditText(this).apply { hint = "Введите номер (например, +79991234567)" }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Найти пользователя")
+            .setView(input)
+            .setPositiveButton("Найти") { _, _ ->
+                val searchPhone = input.text.toString().trim()
+                if (searchPhone.isNotEmpty()) {
+                    if (searchPhone == myPhone) {
+                        Toast.makeText(this, "Это ваш номер!", Toast.LENGTH_SHORT).show()
+                        return@setPositiveButton
+                    }
+                    
+                    usersRef.child(searchPhone).addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (snapshot.exists()) {
+                                val foundName = snapshot.child("name").getValue(String::class.java) ?: "Пользователь"
+                                val chatId = if (myPhone < searchPhone) "${myPhone}_$searchPhone" else "${searchPhone}_$myPhone"
+                                
+                                // Добавляем в историю и открываем
+                                addChatToHistory(chatId, foundName)
+                                showChatScreen(foundName, chatId)
+                            } else {
+                                Toast.makeText(this@MainActivity, "Пользователь не найден", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+
+                        override fun onCancelled(error: DatabaseError) {}
+                    })
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .create()
+        dialog.show()
+    }
+
+    // --- ЭКРАН ЧАТА ---
     private fun showChatScreen(chatName: String, chatId: String) {
         val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        // Шапка с кнопкой очистки
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 32, 16, 16)
@@ -176,18 +269,10 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
         }
 
-        val clearButton = Button(this).apply { 
-            text = "Очистить" 
-            setTextColor(Color.RED)
-            setBackgroundColor(Color.WHITE)
-        }
-
         headerLayout.addView(backButton)
         headerLayout.addView(headerTitle)
-        headerLayout.addView(clearButton)
         mainLayout.addView(headerLayout)
 
-        // Область сообщений
         scrollView = ScrollView(this)
         messagesLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -200,7 +285,6 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f
         ))
 
-        // Поле ввода
         val inputLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 16, 16, 16)
@@ -216,36 +300,18 @@ class MainActivity : Activity() {
 
         setContentView(mainLayout)
 
-        // Отправка сообщения
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
                 val message = mapOf(
-                    "user" to userName,
+                    "user" to myName,
+                    "phone" to myPhone,
                     "text" to text, 
                     "timestamp" to System.currentTimeMillis()
                 )
                 database.child(chatId).push().setValue(message)
                 editText.text.clear()
             }
-        }
-
-        // Логика очистки чата
-        clearButton.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Очистить чат?")
-                .setMessage("Вы уверены, что хотите удалить все сообщения в этом чате?")
-                .setPositiveButton("Да") { _, _ ->
-                    database.child(chatId).removeValue()
-                        .addOnSuccessListener {
-                            Toast.makeText(this, "Чат очищен", Toast.LENGTH_SHORT).show()
-                        }
-                        .addOnFailureListener { e ->
-                            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                }
-                .setNegativeButton("Отмена", null)
-                .show()
         }
 
         listenForMessages(chatId)
