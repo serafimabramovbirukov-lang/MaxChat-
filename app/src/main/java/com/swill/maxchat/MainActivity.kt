@@ -20,7 +20,6 @@ class MainActivity : Activity() {
     private var myPhone: String = ""
     private var myName: String = ""
     
-    // Список для хранения истории чатов (ID и Имя собеседника)
     private val chatHistory = mutableListOf<Pair<String, String>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,17 +32,135 @@ class MainActivity : Activity() {
         myPhone = prefs.getString("phone", "") ?: ""
         myName = prefs.getString("name", "") ?: ""
 
-        // Загружаем сохраненную историю
         loadChatHistory()
 
+        // Проверяем, залогинен ли пользователь
         if (myPhone.isEmpty() || myName.isEmpty()) {
-            showRegistrationScreen()
+            showAuthScreen()
         } else {
             showChatListScreen()
         }
     }
 
-    // Сохранение и загрузка истории чатов
+    // --- ЭКРАН ВХОДА/РЕГИСТРАЦИИ ---
+    private fun showAuthScreen() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(64, 64, 64, 64)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.WHITE)
+        }
+
+        val title = TextView(this).apply { text = "Вход в MaxChat"; textSize = 24f; setPadding(0, 0, 0, 32); gravity = Gravity.CENTER }
+        
+        val nameInput = EditText(this).apply { hint = "Ваше имя (при регистрации)"; textSize = 18f; visibility = View.GONE }
+        val phoneInput = EditText(this).apply { hint = "Номер телефона (+7999...)"; textSize = 18f }
+        val passwordInput = EditText(this).apply { hint = "Пароль"; textSize = 18f; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        
+        val loginButton = Button(this).apply { text = "Войти"; textSize = 18f }
+        val registerButton = Button(this).apply { text = "Зарегистрироваться"; textSize = 18f; setBackgroundColor(Color.GREEN); setTextColor(Color.WHITE) }
+
+        // Подсказка про правильность номера
+        val warningText = TextView(this).apply {
+            text = "Внимание! Вводите номер внимательно. Если ошибетесь, вас не смогут найти."
+            textSize = 12f
+            setTextColor(Color.RED)
+            setPadding(0, 16, 0, 16)
+            visibility = View.GONE
+        }
+
+        layout.addView(title)
+        layout.addView(nameInput)
+        layout.addView(phoneInput)
+        layout.addView(passwordInput)
+        layout.addView(warningText)
+        layout.addView(loginButton)
+        layout.addView(registerButton)
+        setContentView(layout)
+
+        // Переключение на режим регистрации
+        registerButton.setOnClickListener {
+            if (nameInput.visibility == View.GONE) {
+                // Показываем поля для регистрации
+                nameInput.visibility = View.VISIBLE
+                warningText.visibility = View.VISIBLE
+                registerButton.text = "Завершить регистрацию"
+                loginButton.visibility = View.GONE
+            } else {
+                // Выполняем регистрацию
+                val name = nameInput.text.toString().trim()
+                val phone = phoneInput.text.toString().trim()
+                val pass = passwordInput.text.toString().trim()
+
+                if (name.isNotEmpty() && phone.isNotEmpty() && pass.isNotEmpty()) {
+                    // Проверяем, занят ли номер
+                    usersRef.child(phone).addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (snapshot.exists()) {
+                                Toast.makeText(this@MainActivity, "Этот номер уже зарегистрирован!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                // Регистрируем
+                                val userProfile = mapOf("name" to name, "phone" to phone, "password" to pass)
+                                usersRef.child(phone).setValue(userProfile)
+                                
+                                myName = name
+                                myPhone = phone
+                                saveLogin()
+                                showChatListScreen()
+                            }
+                        }
+                        override fun onCancelled(error: DatabaseError) {}
+                    })
+                } else {
+                    Toast.makeText(this, "Заполните все поля!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // Вход для существующих пользователей
+        loginButton.setOnClickListener {
+            val phone = phoneInput.text.toString().trim()
+            val pass = passwordInput.text.toString().trim()
+
+            if (phone.isNotEmpty() && pass.isNotEmpty()) {
+                usersRef.child(phone).addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        if (snapshot.exists()) {
+                            val savedPass = snapshot.child("password").getValue(String::class.java) ?: ""
+                            if (savedPass == pass) {
+                                myName = snapshot.child("name").getValue(String::class.java) ?: "User"
+                                myPhone = phone
+                                saveLogin()
+                                showChatListScreen()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Неверный пароль!", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(this@MainActivity, "Пользователь не найден. Зарегистрируйтесь.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    override fun onCancelled(error: DatabaseError) {}
+                })
+            } else {
+                Toast.makeText(this, "Введите номер и пароль", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun saveLogin() {
+        getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
+            .edit().putString("name", myName).putString("phone", myPhone).apply()
+    }
+
+    private fun logout() {
+        getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().clear().apply()
+        myPhone = ""
+        myName = ""
+        chatHistory.clear()
+        showAuthScreen()
+    }
+
+    // Сохранение и загрузка истории
     private fun saveChatHistory() {
         val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
         val historyString = chatHistory.joinToString("|") { "${it.first}:${it.second}" }
@@ -63,52 +180,13 @@ class MainActivity : Activity() {
     }
 
     private fun addChatToHistory(chatId: String, chatName: String) {
-        // Если чата еще нет в истории, добавляем
         if (chatHistory.none { it.first == chatId }) {
             chatHistory.add(Pair(chatId, chatName))
             saveChatHistory()
         }
     }
 
-    // --- ЭКРАН РЕГИСТРАЦИИ ---
-    private fun showRegistrationScreen() {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(64, 64, 64, 64)
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.WHITE)
-        }
-
-        val title = TextView(this).apply { text = "Регистрация"; textSize = 24f; setPadding(0, 0, 0, 32) }
-        val nameInput = EditText(this).apply { hint = "Ваше имя"; textSize = 18f }
-        val phoneInput = EditText(this).apply { hint = "Ваш номер (например, +79991234567)"; textSize = 18f }
-        val registerButton = Button(this).apply { text = "Зарегистрироваться"; textSize = 18f }
-
-        layout.addView(title)
-        layout.addView(nameInput)
-        layout.addView(phoneInput)
-        layout.addView(registerButton)
-        setContentView(layout)
-
-        registerButton.setOnClickListener {
-            val name = nameInput.text.toString().trim()
-            val phone = phoneInput.text.toString().trim()
-
-            if (name.isNotEmpty() && phone.isNotEmpty()) {
-                myName = name
-                myPhone = phone
-                getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
-                    .edit().putString("name", name).putString("phone", phone).apply()
-
-                usersRef.child(phone).setValue(mapOf("name" to name, "phone" to phone))
-                showChatListScreen()
-            } else {
-                Toast.makeText(this, "Заполните все поля!", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    // --- ЭКРАН СПИСКА ЧАТОВ ---
+    // --- СПИСОК ЧАТОВ ---
     private fun showChatListScreen() {
         currentChatId = null
         val mainLayout = LinearLayout(this).apply {
@@ -116,7 +194,6 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
         }
 
-        // Шапка
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(32, 32, 32, 32)
@@ -125,29 +202,24 @@ class MainActivity : Activity() {
         }
 
         val titleText = TextView(this).apply {
-            text = "MaxChat"
-            textSize = 22f
+            text = "MaxChat ($myName)"
+            textSize = 20f
             setTextColor(Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
         }
 
-        val searchButton = Button(this).apply {
-            text = "Найти"
-            setTextColor(Color.parseColor("#007bff"))
-            setBackgroundColor(Color.WHITE)
-        }
+        val searchButton = Button(this).apply { text = "Найти"; setTextColor(Color.parseColor("#007bff")); setBackgroundColor(Color.WHITE) }
+        val logoutButton = Button(this).apply { text = "Выйти"; setTextColor(Color.RED); setBackgroundColor(Color.WHITE) }
 
         headerLayout.addView(titleText)
         headerLayout.addView(searchButton)
+        headerLayout.addView(logoutButton)
         mainLayout.addView(headerLayout)
 
-        // Список чатов
         val scrollView = ScrollView(this)
-        val chatListLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        val chatListLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        // 1. Общий чат (всегда в списке)
+        // Общий чат
         val generalChat = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(32, 32, 32, 32)
@@ -166,54 +238,47 @@ class MainActivity : Activity() {
         }
         chatListLayout.addView(generalChat)
         
-        val divider1 = View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }
-        chatListLayout.addView(divider1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+        chatListLayout.addView(View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
 
-        // 2. Личные чаты из истории
+        // Личные чаты
         for ((id, name) in chatHistory) {
-            if (id == "general") continue // Общий уже добавили
-
+            if (id == "general") continue
             val chatLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(32, 32, 32, 32)
                 gravity = Gravity.CENTER_VERTICAL
             }
-
             val icon = ImageView(this).apply {
                 setImageResource(android.R.drawable.ic_menu_myplaces)
                 layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) }
             }
-
-            val chatNameText = TextView(this).apply { 
-                text = name
-                textSize = 18f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-
+            val chatNameText = TextView(this).apply { text = name; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD) }
             chatLayout.addView(icon)
             chatLayout.addView(chatNameText)
-            chatLayout.setOnClickListener {
-                showChatScreen(name, id)
-            }
+            chatLayout.setOnClickListener { showChatScreen(name, id) }
             chatListLayout.addView(chatLayout)
-            
-            val divider = View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }
-            chatListLayout.addView(divider, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+            chatListLayout.addView(View(this).apply { setBackgroundColor(Color.parseColor("#E0E0E0")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
 
         scrollView.addView(chatListLayout)
         mainLayout.addView(scrollView)
         setContentView(mainLayout)
 
-        searchButton.setOnClickListener {
-            showSearchDialog()
+        searchButton.setOnClickListener { showSearchDialog() }
+        logoutButton.setOnClickListener { 
+            AlertDialog.Builder(this)
+                .setTitle("Выйти?")
+                .setMessage("Вы уверены, что хотите выйти из аккаунта?")
+                .setPositiveButton("Да") { _, _ -> logout() }
+                .setNegativeButton("Отмена", null)
+                .show()
         }
     }
 
-    // --- ДИАЛОГ ПОИСКА ---
+    // --- ПОИСК ---
     private fun showSearchDialog() {
-        val input = EditText(this).apply { hint = "Введите номер (например, +79991234567)" }
-        val dialog = AlertDialog.Builder(this)
+        val input = EditText(this).apply { hint = "Введите номер" }
+        AlertDialog.Builder(this)
             .setTitle("Найти пользователя")
             .setView(input)
             .setPositiveButton("Найти") { _, _ ->
@@ -223,31 +288,26 @@ class MainActivity : Activity() {
                         Toast.makeText(this, "Это ваш номер!", Toast.LENGTH_SHORT).show()
                         return@setPositiveButton
                     }
-                    
                     usersRef.child(searchPhone).addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(snapshot: DataSnapshot) {
                             if (snapshot.exists()) {
                                 val foundName = snapshot.child("name").getValue(String::class.java) ?: "Пользователь"
                                 val chatId = if (myPhone < searchPhone) "${myPhone}_$searchPhone" else "${searchPhone}_$myPhone"
-                                
-                                // Добавляем в историю и открываем
                                 addChatToHistory(chatId, foundName)
                                 showChatScreen(foundName, chatId)
                             } else {
                                 Toast.makeText(this@MainActivity, "Пользователь не найден", Toast.LENGTH_SHORT).show()
                             }
                         }
-
                         override fun onCancelled(error: DatabaseError) {}
                     })
                 }
             }
             .setNegativeButton("Отмена", null)
-            .create()
-        dialog.show()
+            .show()
     }
 
-    // --- ЭКРАН ЧАТА ---
+    // --- ЧАТ ---
     private fun showChatScreen(chatName: String, chatId: String) {
         val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
@@ -280,20 +340,15 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.parseColor("#f0f0f0"))
         }
         scrollView.addView(messagesLayout)
-        
-        mainLayout.addView(scrollView, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f
-        ))
+        mainLayout.addView(scrollView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f))
 
         val inputLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(16, 16, 16, 16)
             setBackgroundColor(Color.WHITE)
         }
-
         val editText = EditText(this).apply { hint = "Сообщение..." }
         inputLayout.addView(editText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f))
-
         val sendButton = Button(this).apply { text = "->" }
         inputLayout.addView(sendButton)
         mainLayout.addView(inputLayout)
@@ -313,7 +368,6 @@ class MainActivity : Activity() {
                 editText.text.clear()
             }
         }
-
         listenForMessages(chatId)
     }
 
@@ -329,9 +383,7 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.VERTICAL
                         setPadding(16, 8, 16, 8)
                         setBackgroundColor(Color.WHITE)
-                        val params = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                        )
+                        val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                         params.setMargins(0, 4, 0, 4)
                         layoutParams = params
                     }
@@ -342,20 +394,17 @@ class MainActivity : Activity() {
                         setTextColor(Color.parseColor("#007bff"))
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     }
-
                     val textView = TextView(this@MainActivity).apply {
                         this.text = text
                         textSize = 16f
                         setTextColor(Color.BLACK)
                     }
-
                     messageContainer.addView(nameView)
                     messageContainer.addView(textView)
                     messagesLayout.addView(messageContainer)
                 }
                 scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
             }
-
             override fun onCancelled(error: DatabaseError) {}
         })
     }
