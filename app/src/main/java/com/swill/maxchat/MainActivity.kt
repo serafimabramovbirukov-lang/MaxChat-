@@ -45,9 +45,6 @@ class MainActivity : Activity() {
 
     private val cloudName = "bo2cg6du"
     private val uploadPreset = "maxchat_upload"
-    
-    // Для отслеживания прочитанных сообщений (чтобы не спамить уведомлениями)
-    private val notifiedMessages = mutableSetOf<String>()
     override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     database = FirebaseDatabase.getInstance().getReference("chats")
@@ -111,15 +108,13 @@ private fun showNotification(senderName: String, text: String) {
     getSystemService(NotificationManager::class.java).notify(1, builder.build())
 }
 
-// --- ПОИСК НОВЫХ ЧАТОВ И УВЕДОМЛЕНИЯ ---
+// --- ПОИСК НОВЫХ ЧАТОВ ---
 private fun listenForNewChats() {
-    // Слушаем все чаты, где есть наш номер (включая support_)
     database.addValueEventListener(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
             for (child in snapshot.children) {
                 val chatId = child.key ?: continue
                 if (chatId.contains(myPhone) && chatId != "general") {
-                    // Если это новый чат для нас — добавляем в список
                     if (chatHistory.none { it.first == chatId }) {
                         val otherPhone = chatId.replace("support_", "").replace(myPhone, "").replace("_", "")
                         if (otherPhone.isNotEmpty() && otherPhone != myPhone) {
@@ -133,31 +128,12 @@ private fun listenForNewChats() {
                             })
                         }
                     }
-
-                    // Проверяем новые сообщения в этом чате для уведомления
-                    for (msgChild in child.children) {
-                        val msgId = msgChild.key ?: continue
-                        val senderPhone = msgChild.child("phone").getValue(String::class.java) ?: ""
-                        val text = msgChild.child("text").getValue(String::class.java) ?: ""
-                        val type = msgChild.child("type").getValue(String::class.java) ?: "text"
-                        
-                        // Если сообщение не от нас, и мы его еще не показывали
-                        if (senderPhone != myPhone && !notifiedMessages.contains(msgId) && type == "text") {
-                            notifiedMessages.add(msgId)
-                            // Показываем уведомление только если это не тот чат, который сейчас открыт
-                            if (currentChatId != chatId) {
-                                val senderName = msgChild.child("user").getValue(String::class.java) ?: "Аноним"
-                                showNotification(senderName, text)
-                            }
-                        }
-                    }
                 }
             }
         }
         override fun onCancelled(error: DatabaseError) {}
     })
-}
-// --- ЭКРАН ВХОДА ---
+    // --- ЭКРАН ВХОДА ---
 private fun showAuthScreen() {
     val bgColor = if (isDarkTheme) Color.BLACK else Color.WHITE
     val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
@@ -324,7 +300,6 @@ private fun showChatListScreen() {
 
         headerLayout.addView(backButton); headerLayout.addView(headerTextLayout)
         
-        // ОЧИСТКА ЧАТА (Для всех, кроме общего)
         if (chatId != "general") {
             val deleteButton = Button(this).apply { text = "X"; setTextColor(Color.RED); setBackgroundColor(Color.WHITE) }
             headerLayout.addView(deleteButton)
@@ -405,7 +380,7 @@ private fun showChatListScreen() {
         }
     }
 
-    // --- ОТОБРАЖЕНИЕ ---
+    // --- ОТОБРАЖЕНИЕ (Исправлен "Аноним") ---
     private fun listenForMessages(chatId: String) {
         database.child(chatId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -414,8 +389,13 @@ private fun showChatListScreen() {
                 val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
                 
                 for (child in snapshot.children) {
-                    val senderName = child.child("user").getValue(String::class.java) ?: "Аноним"
+                    var senderName = child.child("user").getValue(String::class.java) ?: ""
                     val senderPhone = child.child("phone").getValue(String::class.java) ?: ""
+                    
+                    if (senderName.isEmpty()) {
+                        senderName = if (senderPhone.isNotEmpty()) senderPhone else "Неизвестный"
+                    }
+                    
                     val content = child.child("text").getValue(String::class.java) ?: ""
                     val type = child.child("type").getValue(String::class.java) ?: "text"
                     val timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L
@@ -474,7 +454,7 @@ private fun showChatListScreen() {
                     messagesLayout.addView(typingView)
                 }
                 
-                scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                scrollView.post { scrollView.scrollTo(0, scrollView.bottom) }
             }
             override fun onCancelled(error: DatabaseError) {}
         })
