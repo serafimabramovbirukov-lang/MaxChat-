@@ -149,12 +149,6 @@ class MainActivity : Activity() {
             chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
 
-        val gen = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
-        gen.addView(ImageView(this@MainActivity).apply { setImageResource(android.R.drawable.ic_menu_agenda); layoutParams = LinearLayout.LayoutParams(120, 120) })
-        gen.addView(TextView(this@MainActivity).apply { text = "Общий чат"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
-        gen.setOnClickListener { addChatToHistory("general", "Общий чат"); showChatScreen("Общий чат", "general") }
-        chatListLayout.addView(gen)
-        chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
 
         for ((id, name) in chatHistory) {
             if (id == "general" || id.startsWith("support_")) continue
