@@ -2,19 +2,15 @@ package com.swill.maxchat
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
 import android.widget.*
-import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -38,7 +34,6 @@ class MainActivity : Activity() {
     private var myName: String = ""
     private val adminPhone = "+79111426979" 
     private val chatHistory = mutableListOf<Pair<String, String>>()
-    private var isDarkTheme = false
 
     private val PICK_IMAGE_REQUEST = 1
     private val PICK_VIDEO_REQUEST = 2
@@ -50,96 +45,23 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         database = FirebaseDatabase.getInstance().getReference("chats")
         usersRef = FirebaseDatabase.getInstance().getReference("users")
-        createNotificationChannel()
 
         val prefs = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE)
         myPhone = prefs.getString("phone", "") ?: ""
         myName = prefs.getString("name", "") ?: ""
-        isDarkTheme = prefs.getBoolean("darkTheme", false)
         loadChatHistory()
 
         if (myPhone.isEmpty() || myName.isEmpty()) {
             showAuthScreen()
         } else {
-            usersRef.child(myPhone).child("online").setValue(true)
-            showChatListScreen()
-            listenForNewChats()
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        if (myPhone.isNotEmpty()) {
-            usersRef.child(myPhone).child("online").setValue(false)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (myPhone.isNotEmpty()) {
-            usersRef.child(myPhone).child("online").setValue(true)
-        }
-    }
-
-    private fun toggleTheme() {
-        isDarkTheme = !isDarkTheme
-        getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().putBoolean("darkTheme", isDarkTheme).apply()
-        if (currentChatId != null) {
-            showChatScreen(chatHistory.find { it.first == currentChatId }?.second ?: "Чат", currentChatId!!)
-        } else {
             showChatListScreen()
         }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel("maxchat_channel", "MaxChat Notifications", NotificationManager.IMPORTANCE_HIGH)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
-    }
-
-    private fun showNotification(senderName: String, text: String) {
-        val builder = NotificationCompat.Builder(this, "maxchat_channel")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Новое сообщение от $senderName")
-            .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-        getSystemService(NotificationManager::class.java).notify(1, builder.build())
-    }
-
-    private fun listenForNewChats() {
-        database.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                for (child in snapshot.children) {
-                    val chatId = child.key ?: continue
-                    if (chatId.contains(myPhone) && chatId != "general") {
-                        if (chatHistory.none { it.first == chatId }) {
-                            val otherPhone = chatId.replace("support_", "").replace(myPhone, "").replace("_", "")
-                            if (otherPhone.isNotEmpty() && otherPhone != myPhone) {
-                                usersRef.child(otherPhone).addListenerForSingleValueEvent(object : ValueEventListener {
-                                    override fun onDataChange(userSnapshot: DataSnapshot) {
-                                        val name = userSnapshot.child("name").getValue(String::class.java) ?: "Пользователь $otherPhone"
-                                        addChatToHistory(chatId, name)
-                                        showChatListScreen()
-                                    }
-                                    override fun onCancelled(error: DatabaseError) {}
-                                })
-                            }
-                        }
-                    }
-                }
-            }
-            override fun onCancelled(error: DatabaseError) {}
-        })
-    }
-        // --- ЭКРАН ВХОДА ---
+    // --- ЭКРАН ВХОДА ---
     private fun showAuthScreen() {
-        val bgColor = if (isDarkTheme) Color.BLACK else Color.WHITE
-        val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
-        
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(64, 64, 64, 64); gravity = Gravity.CENTER; setBackgroundColor(bgColor) }
-        val title = TextView(this).apply { text = "Вход в MaxChat"; textSize = 24f; setTextColor(textColor); setPadding(0, 0, 0, 32); gravity = Gravity.CENTER }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(64, 64, 64, 64); gravity = Gravity.CENTER; setBackgroundColor(Color.WHITE) }
+        val title = TextView(this).apply { text = "Вход в MaxChat"; textSize = 24f; setPadding(0, 0, 0, 32); gravity = Gravity.CENTER }
         val nameInput = EditText(this).apply { hint = "Ваше имя"; textSize = 18f; visibility = View.GONE }
         val phoneInput = EditText(this).apply { hint = "Номер телефона"; textSize = 18f }
         val passwordInput = EditText(this).apply { hint = "Пароль"; textSize = 18f; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
@@ -158,8 +80,8 @@ class MainActivity : Activity() {
                         override fun onDataChange(snapshot: DataSnapshot) {
                             if (snapshot.exists()) Toast.makeText(this@MainActivity, "Номер занят!", Toast.LENGTH_SHORT).show()
                             else {
-                                usersRef.child(phone).setValue(mapOf("name" to name, "phone" to phone, "password" to pass, "online" to true))
-                                myName = name; myPhone = phone; saveLogin(); showChatListScreen(); listenForNewChats()
+                                usersRef.child(phone).setValue(mapOf("name" to name, "phone" to phone, "password" to pass))
+                                myName = name; myPhone = phone; saveLogin(); showChatListScreen()
                             }
                         }
                         override fun onCancelled(error: DatabaseError) {}
@@ -175,10 +97,7 @@ class MainActivity : Activity() {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         if (snapshot.exists()) {
                             if (snapshot.child("password").getValue(String::class.java) == pass) {
-                                myName = snapshot.child("name").getValue(String::class.java) ?: "User"
-                                myPhone = phone
-                                usersRef.child(myPhone).child("online").setValue(true)
-                                saveLogin(); showChatListScreen(); listenForNewChats()
+                                myName = snapshot.child("name").getValue(String::class.java) ?: "User"; myPhone = phone; saveLogin(); showChatListScreen()
                             } else Toast.makeText(this@MainActivity, "Неверный пароль!", Toast.LENGTH_SHORT).show()
                         } else Toast.makeText(this@MainActivity, "Нет такого пользователя", Toast.LENGTH_SHORT).show()
                     }
@@ -187,21 +106,15 @@ class MainActivity : Activity() {
             } else Toast.makeText(this, "Введите данные", Toast.LENGTH_SHORT).show()
         }
     }
-
-    // --- СПИСОК ЧАТОВ ---
+        // --- СПИСОК ЧАТОВ ---
     private fun showChatListScreen() {
         currentChatId = null
-        val bgColor = if (isDarkTheme) Color.BLACK else Color.WHITE
-        val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
-
-        val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor) }
+        val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
         val headerLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); setBackgroundColor(Color.parseColor("#007bff")); gravity = Gravity.CENTER_VERTICAL }
         val titleText = TextView(this).apply { text = "MaxChat ($myName)"; textSize = 20f; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
-        val themeButton = Button(this).apply { text = if (isDarkTheme) "☀️" else "🌙"; setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT) }
         val searchButton = Button(this).apply { text = "Найти"; setTextColor(Color.parseColor("#007bff")); setBackgroundColor(Color.WHITE) }
         val logoutButton = Button(this).apply { text = "Выйти"; setTextColor(Color.RED); setBackgroundColor(Color.WHITE) }
-        
-        headerLayout.addView(titleText); headerLayout.addView(themeButton); headerLayout.addView(searchButton); headerLayout.addView(logoutButton); mainLayout.addView(headerLayout)
+        headerLayout.addView(titleText); headerLayout.addView(searchButton); headerLayout.addView(logoutButton); mainLayout.addView(headerLayout)
 
         val scrollView = ScrollView(this); val chatListLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         
@@ -217,7 +130,7 @@ class MainActivity : Activity() {
                             if (userPhone != adminPhone) {
                                 val req = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 16, 32, 16); gravity = Gravity.CENTER_VERTICAL }
                                 req.addView(ImageView(this@MainActivity).apply { setImageResource(android.R.drawable.ic_menu_help); layoutParams = LinearLayout.LayoutParams(100, 100) })
-                                req.addView(TextView(this@MainActivity).apply { text = "Запрос от $userPhone"; textSize = 16f; setTextColor(textColor); setPadding(16, 0, 0, 0) })
+                                req.addView(TextView(this@MainActivity).apply { text = "Запрос от $userPhone"; textSize = 16f; setPadding(16, 0, 0, 0) })
                                 req.setOnClickListener { showChatScreen("Поддержка: $userPhone", chatId) }
                                 chatListLayout.addView(req)
                                 chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
@@ -230,7 +143,7 @@ class MainActivity : Activity() {
         } else {
             val sup = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
             sup.addView(ImageView(this@MainActivity).apply { setImageResource(android.R.drawable.ic_menu_help); layoutParams = LinearLayout.LayoutParams(120, 120) })
-            sup.addView(TextView(this@MainActivity).apply { text = "Поддержка"; textSize = 18f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
+            sup.addView(TextView(this@MainActivity).apply { text = "Поддержка"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
             sup.setOnClickListener { showChatScreen("Поддержка", "support_$myPhone") }
             chatListLayout.addView(sup)
             chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
@@ -238,7 +151,7 @@ class MainActivity : Activity() {
 
         val gen = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
         gen.addView(ImageView(this@MainActivity).apply { setImageResource(android.R.drawable.ic_menu_agenda); layoutParams = LinearLayout.LayoutParams(120, 120) })
-        gen.addView(TextView(this@MainActivity).apply { text = "Общий чат"; textSize = 18f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
+        gen.addView(TextView(this@MainActivity).apply { text = "Общий чат"; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
         gen.setOnClickListener { addChatToHistory("general", "Общий чат"); showChatScreen("Общий чат", "general") }
         chatListLayout.addView(gen)
         chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
@@ -247,15 +160,13 @@ class MainActivity : Activity() {
             if (id == "general" || id.startsWith("support_")) continue
             val chat = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(32, 32, 32, 32); gravity = Gravity.CENTER_VERTICAL }
             chat.addView(ImageView(this@MainActivity).apply { setImageResource(android.R.drawable.ic_menu_myplaces); layoutParams = LinearLayout.LayoutParams(120, 120) })
-            chat.addView(TextView(this@MainActivity).apply { text = name; textSize = 18f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
+            chat.addView(TextView(this@MainActivity).apply { text = name; textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(32, 0, 0, 0) })
             chat.setOnClickListener { showChatScreen(name, id) }
             chatListLayout.addView(chat)
             chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
 
         scrollView.addView(chatListLayout); mainLayout.addView(scrollView); setContentView(mainLayout)
-        
-        themeButton.setOnClickListener { toggleTheme() }
         searchButton.setOnClickListener { showSearchDialog() }
         logoutButton.setOnClickListener { AlertDialog.Builder(this).setTitle("Выйти?").setPositiveButton("Да") { _, _ -> logout() }.setNegativeButton("Нет", null).show() }
     }
@@ -284,22 +195,13 @@ class MainActivity : Activity() {
     // --- ЭКРАН ЧАТА ---
     private fun showChatScreen(chatName: String, chatId: String) {
         currentChatId = chatId
-        val bgColor = if (isDarkTheme) Color.BLACK else Color.WHITE
-        val msgBgColor = if (isDarkTheme) Color.parseColor("#222222") else Color.WHITE
-        val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
-
-        val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor) }
+        val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val headerLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(16, 32, 16, 16); setBackgroundColor(Color.parseColor("#007bff")); gravity = Gravity.CENTER_VERTICAL }
         val backButton = Button(this).apply { text = "<" }
         backButton.setOnClickListener { showChatListScreen() }
         
-        val headerTextLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
-        val headerTitle = TextView(this).apply { text = chatName; textSize = 20f; setTextColor(Color.WHITE) }
-        val statusText = TextView(this).apply { text = "Онлайн"; textSize = 12f; setTextColor(Color.GREEN) }
-        headerTextLayout.addView(headerTitle)
-        headerTextLayout.addView(statusText)
-
-        headerLayout.addView(backButton); headerLayout.addView(headerTextLayout)
+        val headerTitle = TextView(this).apply { text = chatName; textSize = 20f; setTextColor(Color.WHITE); setPadding(16, 0, 0, 0); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
+        headerLayout.addView(backButton); headerLayout.addView(headerTitle)
         
         if (chatId != "general") {
             val deleteButton = Button(this).apply { text = "X"; setTextColor(Color.RED); setBackgroundColor(Color.WHITE) }
@@ -318,16 +220,16 @@ class MainActivity : Activity() {
         mainLayout.addView(headerLayout)
 
         scrollView = ScrollView(this)
-        messagesLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16); setBackgroundColor(bgColor) }
+        messagesLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16); setBackgroundColor(Color.parseColor("#f0f0f0")) }
         scrollView.addView(messagesLayout)
         mainLayout.addView(scrollView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f))
 
-        val inputLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(16, 16, 16, 16); setBackgroundColor(if (isDarkTheme) Color.parseColor("#333333") else Color.WHITE) }
+        val inputLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(16, 16, 16, 16); setBackgroundColor(Color.WHITE) }
         
         val attachButton = Button(this).apply { text = "+"; textSize = 24f }
         inputLayout.addView(attachButton)
 
-        val editText = EditText(this).apply { hint = "Сообщение..."; setTextColor(textColor); setHintTextColor(Color.GRAY) }
+        val editText = EditText(this).apply { hint = "Сообщение..." }
         inputLayout.addView(editText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f))
         val sendButton = Button(this).apply { text = "->" }
         inputLayout.addView(sendButton)
@@ -346,39 +248,17 @@ class MainActivity : Activity() {
             }.show()
         }
 
-        editText.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) {
-                if (chatId != "general" && !chatId.startsWith("support_")) {
-                    database.child(chatId).child("typing_$myPhone").setValue(s.toString().isNotEmpty())
-                }
-            }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
-                val message = mapOf("user" to myName, "phone" to myPhone, "text" to text, "type" to "text", "timestamp" to System.currentTimeMillis(), "read" to false)
+                val message = mapOf("user" to myName, "phone" to myPhone, "text" to text, "type" to "text", "timestamp" to System.currentTimeMillis())
                 database.child(chatId).push().setValue(message)
-                database.child(chatId).child("typing_$myPhone").setValue(false)
                 editText.text.clear()
             }
         }
 
         setContentView(mainLayout)
         listenForMessages(chatId)
-
-        val partnerPhone = chatId.replace("support_", "").replace(myPhone, "").replace("_", "")
-        if (partnerPhone.isNotEmpty() && partnerPhone != myPhone) {
-            usersRef.child(partnerPhone).addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val isOnline = snapshot.child("online").getValue(Boolean::class.java) ?: false
-                    runOnUiThread { statusText.text = if (isOnline) "Онлайн" else "Не в сети" }
-                }
-                override fun onCancelled(error: DatabaseError) {}
-            })
-        }
     }
 
     // --- ОТОБРАЖЕНИЕ ---
@@ -386,29 +266,13 @@ class MainActivity : Activity() {
         database.child(chatId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 messagesLayout.removeAllViews()
-                val msgBgColor = if (isDarkTheme) Color.parseColor("#222222") else Color.WHITE
-                val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
-                
                 for (child in snapshot.children) {
-                    var senderName = child.child("user").getValue(String::class.java) ?: ""
-                    val senderPhone = child.child("phone").getValue(String::class.java) ?: ""
-                    
-                    if (senderName.isEmpty()) {
-                        senderName = if (senderPhone.isNotEmpty()) senderPhone else "Неизвестный"
-                    }
-                    
+                    val senderName = child.child("user").getValue(String::class.java) ?: "Аноним"
                     val content = child.child("text").getValue(String::class.java) ?: ""
                     val type = child.child("type").getValue(String::class.java) ?: "text"
-                    val timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L
-                    val isRead = child.child("read").getValue(Boolean::class.java) ?: false
                     
-                    if (senderPhone != myPhone && type == "text") {
-                        showNotification(senderName, content)
-                        child.ref.child("read").setValue(true)
-                    }
-
                     val container = LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL; setPadding(16, 8, 16, 8); setBackgroundColor(msgBgColor)
+                        orientation = LinearLayout.VERTICAL; setPadding(16, 8, 16, 8); setBackgroundColor(Color.WHITE)
                         val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                         params.setMargins(0, 4, 0, 4); layoutParams = params
                     }
@@ -422,4 +286,83 @@ class MainActivity : Activity() {
                             container.addView(img)
                         }
                         "video" -> {
-                            val playerView = PlayerView(this@MainActivity).apply { layoutParams = Li
+                            val playerView = PlayerView(this@MainActivity).apply { layoutParams = LinearLayout.LayoutParams(600, 400) }
+                            val exoPlayer = ExoPlayer.Builder(this@MainActivity).build()
+                            exoPlayer.setMediaItem(MediaItem.fromUri(content))
+                            exoPlayer.prepare()
+                            playerView.player = exoPlayer
+                            container.addView(playerView)
+                        }
+                        else -> {
+                            val textView = TextView(this@MainActivity).apply { text = content; textSize = 16f; setTextColor(Color.BLACK) }
+                            container.addView(textView)
+                        }
+                    }
+                    messagesLayout.addView(container)
+                }
+                scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    // --- ЗАГРУЗКА ФАЙЛОВ ---
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == RESULT_OK && data != null && data.data != null) {
+            val uri = data.data!!
+            if (requestCode == PICK_IMAGE_REQUEST) uploadToCloudinary(uri, "image")
+            else if (requestCode == PICK_VIDEO_REQUEST) uploadToCloudinary(uri, "video")
+        }
+    }
+
+    private fun uploadToCloudinary(uri: Uri, type: String) {
+        val chatId = currentChatId ?: return
+        Toast.makeText(this, "Загрузка...", Toast.LENGTH_SHORT).show()
+
+        Thread {
+            try {
+                val inputStream = contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+
+                if (bytes != null) {
+                    val client = OkHttpClient()
+                    val requestBody = MultipartBody.Builder()
+                        .setType(MultipartBody.FORM)
+                        .addFormDataPart("file", "file", bytes.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
+                        .addFormDataPart("upload_preset", uploadPreset)
+                        .build()
+
+                    val resourceType = if (type == "image") "image" else "video"
+                    val url = "https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload"
+                    val request = Request.Builder().url(url).post(requestBody).build()
+                    
+                    val response = client.newCall(request).execute()
+                    val responseBody = response.body?.string()
+
+                    if (response.isSuccessful && responseBody != null) {
+                        val json = JSONObject(responseBody)
+                        val secureUrl = json.getString("secure_url")
+                        
+                        runOnUiThread {
+                            val message = mapOf("user" to myName, "phone" to myPhone, "text" to secureUrl, "type" to type, "timestamp" to System.currentTimeMillis())
+                            database.child(chatId).push().setValue(message)
+                        }
+                    } else {
+                        runOnUiThread { Toast.makeText(this, "Ошибка загрузки", Toast.LENGTH_SHORT).show() }
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show() }
+            }
+        }.start()
+    }
+
+    // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    private fun saveLogin() { getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().putString("name", myName).putString("phone", myPhone).apply() }
+    private fun logout() { getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().clear().apply(); myPhone = ""; myName = ""; chatHistory.clear(); showAuthScreen() }
+    private fun saveChatHistory() { getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().putString("chatHistory", chatHistory.joinToString("|") { "${it.first}:${it.second}" }).apply() }
+    private fun loadChatHistory() { val h = getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).getString("chatHistory", "") ?: ""; if (h.isNotEmpty()) { chatHistory.clear(); h.split("|").forEach { val p = it.split(":"); if (p.size == 2) chatHistory.add(Pair(p[0], p[1])) } } }
+    private fun addChatToHistory(id: String, name: String) { if (chatHistory.none { it.first == id }) { chatHistory.add(Pair(id, name)); saveChatHistory() } }
+}
