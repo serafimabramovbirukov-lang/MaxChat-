@@ -2,27 +2,307 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MaxChat Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MaxChat</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        .screen { display: none; }
-        .active { display: block; }
-        input, button { display: block; width: 100%; padding: 10px; margin-bottom: 10px; font-size: 16px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: #f0f2f5; height: 100vh; display: flex; justify-content: center; }
+        #app { width: 100%; max-width: 600px; background: #fff; display: flex; flex-direction: column; height: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        
+        .screen { display: none; flex-direction: column; height: 100%; }
+        .screen.active { display: flex; }
+
+        #login-screen { justify-content: center; align-items: center; padding: 20px; }
+        #login-screen h1 { color: #007bff; margin-bottom: 20px; }
+        #login-screen input { width: 100%; padding: 15px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+        #login-screen button { width: 100%; padding: 15px; background: #007bff; color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-bottom: 10px;}
+
+        .header { background: #007bff; color: #fff; padding: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 18px; font-weight: bold; }
+        .header button { background: #fff; color: #007bff; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 5px; }
+        .header button.logout { color: red; }
+
+        #chat-list { flex: 1; overflow-y: auto; }
+        .chat-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .chat-item:hover { background: #f9f9f9; }
+        .chat-icon { width: 50px; height: 50px; background: #ccc; border-radius: 50%; margin-right: 15px; display: flex; justify-content: center; align-items: center; font-size: 20px; color: #fff; }
+        .chat-info { flex: 1; }
+        .chat-name { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+
+        #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: #e5ddd5; }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
+        .message.my { align-self: flex-end; background: #dcf8c6; border-bottom-right-radius: 2px; }
+        .message.other { align-self: flex-start; background: #fff; border-bottom-left-radius: 2px; }
+        .message .sender { font-size: 12px; color: #007bff; margin-bottom: 3px; font-weight: bold; }
+        
+        #input-area { display: flex; padding: 10px; background: #f0f0f0; }
+        #input-area input { flex: 1; padding: 12px; border: none; border-radius: 20px; font-size: 16px; outline: none; }
+        #input-area button { background: #007bff; color: #fff; border: none; border-radius: 50%; width: 45px; height: 45px; margin-left: 10px; cursor: pointer; font-size: 18px; display: flex; justify-content: center; align-items: center; }
     </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
-    <div id="screen-login" class="screen active">
-        <h2>Вход</h2>
-        <input type="text" id="inp-name" placeholder="Имя">
-        <input type="text" id="inp-phone" placeholder="Номер">
-        <input type="password" id="inp-pass" placeholder="Пароль">
-        <button onclick="alert('Кнопка РАБОТАЕТ!')">Проверить кнопку</button>
-        <button onclick="doRegister()">Зарегистрироваться</button>
+    <div id="app">
+        <!-- Экран входа -->
+        <div id="login-screen" class="screen active">
+            <h1>MaxChat</h1>
+            <input type="text" id="reg-name" placeholder="Ваше имя" maxlength="20">
+            <input type="text" id="reg-phone" placeholder="Ваш номер (+7999...)">
+            <input type="password" id="reg-pass" placeholder="Пароль">
+            <button id="btn-register" onclick="register()">Зарегистрироваться</button>
+            <button id="btn-login" onclick="login()">Войти</button>
+        </div>
+
+        <!-- Список чатов -->
+        <div id="chat-list-screen" class="screen">
+            <div class="header">
+                <span>Чаты</span>
+                <div>
+                    <button onclick="showSearchDialog()">Найти</button>
+                    <button class="logout" onclick="logout()">Выйти</button>
+                </div>
+            </div>
+            <div id="chat-list"></div>
+        </div>
+
+        <!-- Экран чата -->
+        <div id="chat-screen" class="screen">
+            <div class="header">
+                <button onclick="goBack()"><</button>
+                <span id="chat-title">Чат</span>
+                <div style="width: 50px;"></div>
+            </div>
+            <div id="messages"></div>
+            <div id="input-area">
+                <input type="text" id="message-input" placeholder="Сообщение..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">➤</button>
+            </div>
+        </div>
     </div>
+
     <script>
-        function doRegister() {
-            alert("Нажата кнопка регистрации! Имя: " + document.getElementById('inp-name').value);
+        const firebaseConfig = {
+            apiKey: "AIzaSyBjRTWj1Po-L0g1CRfGmofuqarnHV66Ewo",
+            authDomain: "maxchat-5e82f.firebaseapp.com",
+            databaseURL: "https://maxchat-5e82f-default-rtdb.firebaseio.com",
+            projectId: "maxchat-5e82f",
+            storageBucket: "maxchat-5e82f.firebasestorage.app",
+            messagingSenderId: "321397267482",
+            appId: "1:321397267482:android:98e6e543adaa02d99a45a3"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let username = "";
+        let userphone = "";
+        let currentChatId = "";
+        let currentChatListener = null;
+
+        window.onload = function() {
+            username = localStorage.getItem("maxchat_name") || "";
+            userphone = localStorage.getItem("maxchat_phone") || "";
+            
+            if (username && userphone) {
+                showScreen('chat-list-screen');
+                loadChatList();
+            }
+        };
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function register() {
+            const name = document.getElementById("reg-name").value.trim();
+            const phone = document.getElementById("reg-phone").value.trim();
+            const pass = document.getElementById("reg-pass").value.trim();
+
+            if (name && phone && pass) {
+                // Блокируем кнопку на время запроса, чтобы не нажать дважды
+                document.getElementById("btn-register").disabled = true;
+                
+                db.ref('users/' + phone).once('value').then(snapshot => {
+                    if (snapshot.exists()) {
+                        alert("Этот номер уже зарегистрирован!");
+                        document.getElementById("btn-register").disabled = false;
+                    } else {
+                        db.ref('users/' + phone).set({ name: name, phone: phone, password: pass });
+                        username = name; userphone = phone;
+                        localStorage.setItem("maxchat_name", name);
+                        localStorage.setItem("maxchat_phone", phone);
+                        showScreen('chat-list-screen');
+                        loadChatList();
+                        document.getElementById("btn-register").disabled = false;
+                    }
+                }).catch(error => {
+                    alert("Ошибка подключения: " + error.message);
+                    document.getElementById("btn-register").disabled = false;
+                });
+            } else {
+                alert("Заполните все поля!");
+            }
+        }
+
+        function login() {
+            const phone = document.getElementById("reg-phone").value.trim();
+            const pass = document.getElementById("reg-pass").value.trim();
+
+            if (phone && pass) {
+                document.getElementById("btn-login").disabled = true;
+                
+                db.ref('users/' + phone).once('value').then(snapshot => {
+                    if (snapshot.exists()) {
+                        const savedPass = snapshot.val().password;
+                        if (savedPass === pass) {
+                            username = snapshot.val().name;
+                            userphone = phone;
+                            localStorage.setItem("maxchat_name", username);
+                            localStorage.setItem("maxchat_phone", phone);
+                            showScreen('chat-list-screen');
+                            loadChatList();
+                        } else {
+                            alert("Неверный пароль!");
+                        }
+                    } else {
+                        alert("Пользователь не найден. Зарегистрируйтесь.");
+                    }
+                    document.getElementById("btn-login").disabled = false;
+                }).catch(error => {
+                    alert("Ошибка подключения: " + error.message);
+                    document.getElementById("btn-login").disabled = false;
+                });
+            } else {
+                alert("Введите номер и пароль");
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem("maxchat_name");
+            localStorage.removeItem("maxchat_phone");
+            username = ""; userphone = "";
+            if (currentChatListener) currentChatListener.off();
+            showScreen('login-screen');
+        }
+
+        function loadChatList() {
+            const list = document.getElementById("chat-list");
+            list.innerHTML = "";
+
+            // Общий чат
+            addChatItem("Общий чат", "general");
+
+            // Личные чаты
+            let history = JSON.parse(localStorage.getItem("maxchat_history") || "[]");
+            history.forEach(chat => {
+                if (chat.id !== "general") {
+                    addChatItem(chat.name, chat.id);
+                }
+            });
+        }
+
+        function addChatItem(name, id) {
+            const list = document.getElementById("chat-list");
+            const div = document.createElement("div");
+            div.className = "chat-item";
+            div.onclick = () => openChat(id, name);
+
+            div.innerHTML = `
+                <div class="chat-icon">${name[0]}</div>
+                <div class="chat-info">
+                    <div class="chat-name">${name}</div>
+                </div>
+            `;
+            list.appendChild(div);
+        }
+
+        function openChat(chatId, chatName) {
+            currentChatId = chatId;
+            document.getElementById("chat-title").textContent = chatName;
+            showScreen('chat-screen');
+            loadMessages(chatId);
+
+            let history = JSON.parse(localStorage.getItem("maxchat_history") || "[]");
+            if (!history.some(c => c.id === chatId)) {
+                history.push({ id: chatId, name: chatName });
+                localStorage.setItem("maxchat_history", JSON.stringify(history));
+            }
+        }
+
+        function loadMessages(chatId) {
+            if (currentChatListener) currentChatListener.off();
+            
+            const messagesDiv = document.getElementById("messages");
+            messagesDiv.innerHTML = "";
+
+            currentChatListener = db.ref('chats/' + chatId);
+            currentChatListener.on('value', (snapshot) => {
+                messagesDiv.innerHTML = "";
+                snapshot.forEach((child) => {
+                    const msg = child.val();
+                    const isMine = msg.phone === userphone;
+                    
+                    const msgDiv = document.createElement("div");
+                    msgDiv.className = "message " + (isMine ? "my" : "other");
+                    
+                    if (!isMine) {
+                        const senderDiv = document.createElement("div");
+                        senderDiv.className = "sender";
+                        senderDiv.textContent = msg.user || "Аноним";
+                        msgDiv.appendChild(senderDiv);
+                    }
+
+                    const textDiv = document.createElement("div");
+                    textDiv.textContent = msg.text || "";
+                    msgDiv.appendChild(textDiv);
+
+                    messagesDiv.appendChild(msgDiv);
+                });
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            });
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("message-input");
+            if (!input) return;
+            const text = input.value.trim();
+            
+            if (text && currentChatId) {
+                db.ref('chats/' + currentChatId).push({
+                    user: username,
+                    phone: userphone,
+                    text: text,
+                    timestamp: Date.now()
+                });
+                input.value = "";
+            }
+        }
+
+        function showSearchDialog() {
+            const phone = prompt("Введите номер пользователя (например, +79991234567):");
+            if (!phone) return;
+            if (phone === userphone) { alert("Это ваш номер!"); return; }
+
+            db.ref('users/' + phone).once('value').then((snapshot) => {
+                if (snapshot.exists()) {
+                    const foundName = snapshot.val().name;
+                    const chatId = (userphone < phone) ? `${userphone}_${phone}` : `${phone}_${userphone}`;
+                    openChat(chatId, foundName);
+                } else {
+                    alert("Пользователь не найден");
+                }
+            });
+        }
+
+        function goBack() {
+            if (currentChatListener) currentChatListener.off();
+            showScreen('chat-list-screen');
+            loadChatList();
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === "Enter") sendMessage();
         }
     </script>
 </body>
