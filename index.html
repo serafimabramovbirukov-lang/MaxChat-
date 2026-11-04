@@ -6,9 +6,20 @@
     <title>MaxChat</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        body { background-color: #f0f2f5; height: 100vh; display: flex; justify-content: center; }
-        #app { width: 100%; max-width: 600px; background: #fff; display: flex; flex-direction: column; height: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.1); position: relative; }
+        body { background-color: #f0f2f5; height: 100vh; display: flex; justify-content: center; transition: background 0.3s; }
+        #app { width: 100%; max-width: 600px; background: #fff; display: flex; flex-direction: column; height: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.1); position: relative; transition: background 0.3s; }
         
+        .dark-theme { background-color: #121212 !important; color: #fff; }
+        .dark-theme #app { background-color: #1e1e1e; }
+        .dark-theme #login-screen, .dark-theme #chat-list, .dark-theme .chat-item { background-color: #1e1e1e; color: #fff; }
+        .dark-theme .chat-item:hover { background-color: #333; }
+        .dark-theme #messages { background-color: #121212; }
+        .dark-theme .message.other { background-color: #333; color: #fff; }
+        .dark-theme .message.my { background-color: #005c4b; color: #fff; }
+        .dark-theme #input-area { background-color: #1e1e1e; }
+        .dark-theme #message-input { background-color: #333; color: #fff; }
+        .dark-theme .header { background-color: #1f2c34; }
+
         .screen { display: none; flex-direction: column; height: 100%; }
         .screen.active { display: flex; }
 
@@ -18,26 +29,30 @@
         #login-screen button { width: 100%; padding: 15px; background: #007bff; color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-bottom: 10px;}
         
         .header { background: #007bff; color: #fff; padding: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 18px; font-weight: bold; }
-        .header button { background: #fff; color: #007bff; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 5px; }
+        .header button { background: #fff; color: #007bff; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 5px; font-weight: bold;}
+        .header button.theme-btn { background: transparent; color: #fff; font-size: 20px; padding: 0 10px; }
         .header button.logout { color: red; }
 
         #chat-list { flex: 1; overflow-y: auto; }
-        .chat-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
-        .chat-item:hover { background: #f9f9f9; }
+        .chat-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; }
         .chat-icon { width: 50px; height: 50px; background: #ccc; border-radius: 50%; margin-right: 15px; display: flex; justify-content: center; align-items: center; font-size: 20px; color: #fff; }
         .chat-info { flex: 1; }
         .chat-name { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+        .chat-last-msg { color: #888; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .section-title { padding: 10px 15px; font-size: 14px; color: #888; font-weight: bold; background: #f9f9f9; border-bottom: 1px solid #eee; }
 
         #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: #e5ddd5; }
-        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-wrap: break-word; position: relative; }
         .message.my { align-self: flex-end; background: #dcf8c6; border-bottom-right-radius: 2px; }
         .message.other { align-self: flex-start; background: #fff; border-bottom-left-radius: 2px; }
         .message .sender { font-size: 12px; color: #007bff; margin-bottom: 3px; font-weight: bold; }
+        .message .time { font-size: 10px; color: #999; text-align: right; margin-top: 4px; }
         
         #input-area { display: flex; padding: 10px; background: #f0f0f0; }
         #input-area input { flex: 1; padding: 12px; border: none; border-radius: 20px; font-size: 16px; outline: none; }
         #input-area button { background: #007bff; color: #fff; border: none; border-radius: 50%; width: 45px; height: 45px; margin-left: 10px; cursor: pointer; font-size: 18px; display: flex; justify-content: center; align-items: center; }
+        
+        .typing-indicator { font-size: 12px; color: #888; padding: 5px 15px; font-style: italic; }
     </style>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -59,6 +74,7 @@
             <div class="header">
                 <span>Чаты</span>
                 <div>
+                    <button class="theme-btn" onclick="toggleTheme()">🌙</button>
                     <button onclick="showSearchDialog()">Найти</button>
                     <button class="logout" onclick="logout()">Выйти</button>
                 </div>
@@ -71,11 +87,12 @@
             <div class="header">
                 <button onclick="goBack()"><</button>
                 <span id="chat-title">Чат</span>
-                <div id="delete-btn-container"></div>
+                <button id="delete-chat-btn" style="display:none; color:red; background:white;" onclick="deleteCurrentChat()">X</button>
             </div>
             <div id="messages"></div>
+            <div id="typing-indicator" class="typing-indicator"></div>
             <div id="input-area">
-                <input type="text" id="message-input" placeholder="Сообщение..." onkeypress="handleKeyPress(event)">
+                <input type="text" id="message-input" placeholder="Сообщение..." onkeypress="handleKeyPress(event)" oninput="handleTyping()">
                 <button onclick="sendMessage()">➤</button>
             </div>
         </div>
@@ -94,25 +111,39 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
-        // ВАЖНО: Твой номер (должен совпадать с Android-версией)
         const ADMIN_PHONE = "+79111426979"; 
 
         let username = "";
         let userphone = "";
         let currentChatId = "";
         let currentChatListener = null;
-        let supportRequestsListener = null; // Слушатель для запросов
+        let supportRequestsListener = null;
+        let isDarkTheme = false;
 
         window.onload = function() {
+            isDarkTheme = localStorage.getItem("maxchat_theme") === "dark";
+            if (isDarkTheme) document.body.classList.add("dark-theme");
+
             username = localStorage.getItem("maxchat_name") || "";
             userphone = localStorage.getItem("maxchat_phone") || "";
             
             if (username && userphone) {
                 showScreen('chat-list-screen');
                 loadChatList();
+                // Отмечаем онлайн
+                db.ref('users/' + userphone + '/online').set(true);
+                // Ставим оффлайн при закрытии
+                window.addEventListener('beforeunload', () => {
+                    db.ref('users/' + userphone + '/online').set(false);
+                });
             }
         };
+
+        function toggleTheme() {
+            isDarkTheme = !isDarkTheme;
+            localStorage.setItem("maxchat_theme", isDarkTheme ? "dark" : "light");
+            document.body.classList.toggle("dark-theme");
+        }
 
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -129,7 +160,7 @@
                     if (snapshot.exists()) {
                         alert("Этот номер уже зарегистрирован!");
                     } else {
-                        db.ref('users/' + phone).set({ name: name, phone: phone, password: pass });
+                        db.ref('users/' + phone).set({ name: name, phone: phone, password: pass, online: true });
                         username = name; userphone = phone;
                         localStorage.setItem("maxchat_name", name);
                         localStorage.setItem("maxchat_phone", phone);
@@ -155,6 +186,7 @@
                             userphone = phone;
                             localStorage.setItem("maxchat_name", username);
                             localStorage.setItem("maxchat_phone", phone);
+                            db.ref('users/' + phone + '/online').set(true);
                             showScreen('chat-list-screen');
                             loadChatList();
                         } else {
@@ -170,10 +202,11 @@
         }
 
         function logout() {
+            if (userphone) db.ref('users/' + userphone + '/online').set(false);
             localStorage.removeItem("maxchat_name");
             localStorage.removeItem("maxchat_phone");
             username = ""; userphone = "";
-            if (supportRequestsListener) supportRequestsListener.off(); // Отключаем слушатель
+            if (supportRequestsListener) supportRequestsListener.off();
             showScreen('login-screen');
         }
 
@@ -181,20 +214,18 @@
             const list = document.getElementById("chat-list");
             list.innerHTML = "";
 
-            // 1. Если я админ - показываем запросы в поддержку
+            // Запросы в поддержку (только для админа)
             if (userphone === ADMIN_PHONE) {
                 const supportHeader = document.createElement("div");
                 supportHeader.className = "section-title";
                 supportHeader.textContent = "Запросы в поддержку:";
                 list.appendChild(supportHeader);
 
-                // Слушаем только те чаты, которые начинаются на "support_"
                 if (supportRequestsListener) supportRequestsListener.off();
                 supportRequestsListener = db.ref('chats');
                 supportRequestsListener.on('value', (snapshot) => {
-                    // Удаляем старые запросы, чтобы не дублировать
-                    const existingRequests = list.querySelectorAll('.support-request');
-                    existingRequests.forEach(el => el.remove());
+                    const existing = list.querySelectorAll('.support-request');
+                    existing.forEach(el => el.remove());
 
                     snapshot.forEach((child) => {
                         const chatId = child.key;
@@ -210,21 +241,19 @@
                                         <div class="chat-name">Запрос от ${userPhone}</div>
                                     </div>
                                 `;
-                                // Вставляем после заголовка
                                 list.insertBefore(div, supportHeader.nextSibling);
                             }
                         }
                     });
                 });
             } else {
-                // Если не админ - просто кнопка "Поддержка"
                 addChatItem("Поддержка", "support_" + userphone, "?");
             }
 
-            // 2. Общий чат
+            // Общий чат
             addChatItem("Общий чат", "general", "О");
 
-            // 3. Личные чаты
+            // Личные чаты
             let history = JSON.parse(localStorage.getItem("maxchat_history") || "[]");
             history.forEach(chat => {
                 if (chat.id !== "general" && !chat.id.startsWith("support_")) {
@@ -253,20 +282,26 @@
             document.getElementById("chat-title").textContent = chatName;
             showScreen('chat-screen');
             
-            // Кнопка удаления для админа
-            const delContainer = document.getElementById("delete-btn-container");
-            delContainer.innerHTML = "";
-            if (userphone === ADMIN_PHONE && chatId.startsWith("support_")) {
-                const delBtn = document.createElement("button");
-                delBtn.textContent = "X";
-                delBtn.style.color = "red";
-                delBtn.onclick = () => {
-                    if (confirm("Удалить запрос?")) {
-                        db.ref('chats/' + chatId).remove();
-                        goBack();
-                    }
-                };
-                delContainer.appendChild(delBtn);
+            // Кнопка удаления (для всех, кроме общего)
+            const delBtn = document.getElementById("delete-chat-btn");
+            if (chatId !== "general") {
+                delBtn.style.display = "block";
+            } else {
+                delBtn.style.display = "none";
+            }
+
+            // Проверка на поддержку
+            const inputArea = document.getElementById("input-area");
+            if (chatId === "support_" + userphone) {
+                inputArea.innerHTML = `
+                    <input type="text" id="message-input" placeholder="Сообщение..." onkeypress="handleKeyPress(event)" oninput="handleTyping()">
+                    <button onclick="sendMessage()">➤</button>
+                `;
+            } else {
+                inputArea.innerHTML = `
+                    <input type="text" id="message-input" placeholder="Сообщение..." onkeypress="handleKeyPress(event)" oninput="handleTyping()">
+                    <button onclick="sendMessage()">➤</button>
+                `;
             }
 
             loadMessages(chatId);
@@ -278,16 +313,37 @@
             }
         }
 
+        function deleteCurrentChat() {
+            if (!currentChatId) return;
+            if (confirm("Очистить чат? Все сообщения будут удалены.")) {
+                db.ref('chats/' + currentChatId).remove().then(() => {
+                    goBack();
+                });
+            }
+        }
+
         function loadMessages(chatId) {
             if (currentChatListener) currentChatListener.off();
             
             const messagesDiv = document.getElementById("messages");
             messagesDiv.innerHTML = "";
+            const typingDiv = document.getElementById("typing-indicator");
 
             currentChatListener = db.ref('chats/' + chatId);
             currentChatListener.on('value', (snapshot) => {
                 messagesDiv.innerHTML = "";
                 snapshot.forEach((child) => {
+                    if (child.key.startsWith("typing_")) {
+                        const isTyping = child.val();
+                        const partnerPhone = child.key.replace("typing_", "");
+                        if (isTyping && partnerPhone !== userphone) {
+                            typingDiv.textContent = "Печатает...";
+                        } else {
+                            typingDiv.textContent = "";
+                        }
+                        return;
+                    }
+
                     const msg = child.val();
                     const isMine = msg.phone === userphone;
                     
@@ -305,10 +361,25 @@
                     textDiv.textContent = msg.text || "";
                     msgDiv.appendChild(textDiv);
 
+                    // Время
+                    const timeDiv = document.createElement("div");
+                    timeDiv.className = "time";
+                    const date = new Date(msg.timestamp || Date.now());
+                    timeDiv.textContent = date.getHours().toString().padStart(2, '0') + ":" + date.getMinutes().toString().padStart(2, '0');
+                    msgDiv.appendChild(timeDiv);
+
                     messagesDiv.appendChild(msgDiv);
                 });
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             });
+        }
+
+        function handleTyping() {
+            if (currentChatId && currentChatId !== "general") {
+                const input = document.getElementById("message-input");
+                const isTyping = input.value.trim().length > 0;
+                db.ref('chats/' + currentChatId + '/typing_' + userphone).set(isTyping);
+            }
         }
 
         function sendMessage() {
@@ -321,9 +392,14 @@
                     user: username,
                     phone: userphone,
                     text: text,
-                    timestamp: Date.now()
+                    type: "text",
+                    timestamp: Date.now(),
+                    read: false
                 });
                 input.value = "";
+                if (currentChatId !== "general") {
+                    db.ref('chats/' + currentChatId + '/typing_' + userphone).set(false);
+                }
             }
         }
 
@@ -334,24 +410,4 @@
 
             db.ref('users/' + phone).once('value').then((snapshot) => {
                 if (snapshot.exists()) {
-                    const foundName = snapshot.val().name;
-                    const chatId = (userphone < phone) ? `${userphone}_${phone}` : `${phone}_${userphone}`;
-                    openChat(chatId, foundName);
-                } else {
-                    alert("Пользователь не найден");
-                }
-            });
-        }
-
-        function goBack() {
-            if (currentChatListener) currentChatListener.off();
-            showScreen('chat-list-screen');
-            loadChatList();
-        }
-
-        function handleKeyPress(e) {
-            if (e.key === "Enter") sendMessage();
-        }
-    </script>
-</body>
-</html>
+                    const foundName = 
