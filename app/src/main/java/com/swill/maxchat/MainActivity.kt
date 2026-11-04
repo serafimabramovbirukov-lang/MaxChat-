@@ -220,6 +220,7 @@ private fun showChatScreen(chatName: String, chatId: String) {
     mainLayout.addView(inputLayout)
 
     attachButton.setOnClickListener {
+        Toast.makeText(this, "Кнопка нажата!", Toast.LENGTH_SHORT).show()
         val options = arrayOf("Фото", "Видео")
         AlertDialog.Builder(this).setTitle("Отправить").setItems(options) { _, which ->
             if (which == 0) {
