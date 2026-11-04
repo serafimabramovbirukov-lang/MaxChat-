@@ -20,6 +20,7 @@
         .header { background: #007bff; color: #fff; padding: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 18px; font-weight: bold; }
         .header button { background: #fff; color: #007bff; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 5px; }
         .header button.logout { color: red; }
+        .header button.delete-btn { color: red; background: white; }
 
         #chat-list { flex: 1; overflow-y: auto; }
         .chat-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
@@ -27,6 +28,7 @@
         .chat-icon { width: 50px; height: 50px; background: #ccc; border-radius: 50%; margin-right: 15px; display: flex; justify-content: center; align-items: center; font-size: 20px; color: #fff; }
         .chat-info { flex: 1; }
         .chat-name { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+        .section-title { padding: 10px 15px; font-size: 14px; color: #888; font-weight: bold; background: #f9f9f9; border-bottom: 1px solid #eee; }
 
         #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: #e5ddd5; }
         .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
@@ -70,7 +72,7 @@
             <div class="header">
                 <button onclick="goBack()"><</button>
                 <span id="chat-title">Чат</span>
-                <div style="width: 50px;"></div>
+                <button id="delete-chat-btn" class="delete-btn" onclick="deleteCurrentChat()">X</button>
             </div>
             <div id="messages"></div>
             <div id="input-area">
@@ -93,11 +95,13 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const ADMIN_PHONE = "+79111426979"; 
 
         let username = "";
         let userphone = "";
         let currentChatId = "";
         let currentChatListener = null;
+        let supportRequestsListener = null;
 
         window.onload = function() {
             username = localStorage.getItem("maxchat_name") || "";
@@ -120,9 +124,7 @@
             const pass = document.getElementById("reg-pass").value.trim();
 
             if (name && phone && pass) {
-                // Блокируем кнопку на время запроса, чтобы не нажать дважды
                 document.getElementById("btn-register").disabled = true;
-                
                 db.ref('users/' + phone).once('value').then(snapshot => {
                     if (snapshot.exists()) {
                         alert("Этот номер уже зарегистрирован!");
@@ -137,7 +139,7 @@
                         document.getElementById("btn-register").disabled = false;
                     }
                 }).catch(error => {
-                    alert("Ошибка подключения: " + error.message);
+                    alert("Ошибка: " + error.message);
                     document.getElementById("btn-register").disabled = false;
                 });
             } else {
@@ -151,7 +153,6 @@
 
             if (phone && pass) {
                 document.getElementById("btn-login").disabled = true;
-                
                 db.ref('users/' + phone).once('value').then(snapshot => {
                     if (snapshot.exists()) {
                         const savedPass = snapshot.val().password;
@@ -166,11 +167,11 @@
                             alert("Неверный пароль!");
                         }
                     } else {
-                        alert("Пользователь не найден. Зарегистрируйтесь.");
+                        alert("Пользователь не найден.");
                     }
                     document.getElementById("btn-login").disabled = false;
                 }).catch(error => {
-                    alert("Ошибка подключения: " + error.message);
+                    alert("Ошибка: " + error.message);
                     document.getElementById("btn-login").disabled = false;
                 });
             } else {
@@ -182,7 +183,7 @@
             localStorage.removeItem("maxchat_name");
             localStorage.removeItem("maxchat_phone");
             username = ""; userphone = "";
-            if (currentChatListener) currentChatListener.off();
+            if (supportRequestsListener) supportRequestsListener.off();
             showScreen('login-screen');
         }
 
@@ -190,26 +191,59 @@
             const list = document.getElementById("chat-list");
             list.innerHTML = "";
 
-            // Общий чат
-            addChatItem("Общий чат", "general");
+            // Запросы в поддержку (только для админа)
+            if (userphone === ADMIN_PHONE) {
+                const supportHeader = document.createElement("div");
+                supportHeader.className = "section-title";
+                supportHeader.textContent = "Запросы в поддержку:";
+                list.appendChild(supportHeader);
+
+                if (supportRequestsListener) supportRequestsListener.off();
+                supportRequestsListener = db.ref('chats');
+                supportRequestsListener.on('value', (snapshot) => {
+                    const existing = list.querySelectorAll('.support-request');
+                    existing.forEach(el => el.remove());
+
+                    snapshot.forEach((child) => {
+                        const chatId = child.key;
+                        if (chatId.startsWith("support_")) {
+                            const userPhone = chatId.replace("support_", "");
+                            if (userPhone !== ADMIN_PHONE) {
+                                const div = document.createElement("div");
+                                div.className = "chat-item support-request";
+                                div.onclick = () => openChat(chatId, "Поддержка: " + userPhone);
+                                div.innerHTML = `
+                                    <div class="chat-icon" style="background: #ff9800;">?</div>
+                                    <div class="chat-info">
+                                        <div class="chat-name">Запрос от ${userPhone}</div>
+                                    </div>
+                                `;
+                                list.insertBefore(div, supportHeader.nextSibling);
+                            }
+                        }
+                    });
+                });
+            } else {
+                addChatItem("Поддержка", "support_" + userphone, "?");
+            }
 
             // Личные чаты
             let history = JSON.parse(localStorage.getItem("maxchat_history") || "[]");
             history.forEach(chat => {
-                if (chat.id !== "general") {
-                    addChatItem(chat.name, chat.id);
+                if (!chat.id.startsWith("support_")) {
+                    addChatItem(chat.name, chat.id, chat.name[0]);
                 }
             });
         }
 
-        function addChatItem(name, id) {
+        function addChatItem(name, id, iconChar) {
             const list = document.getElementById("chat-list");
             const div = document.createElement("div");
             div.className = "chat-item";
             div.onclick = () => openChat(id, name);
-
+            
             div.innerHTML = `
-                <div class="chat-icon">${name[0]}</div>
+                <div class="chat-icon">${iconChar}</div>
                 <div class="chat-info">
                     <div class="chat-name">${name}</div>
                 </div>
@@ -230,6 +264,15 @@
             }
         }
 
+        function deleteCurrentChat() {
+            if (!currentChatId) return;
+            if (confirm("Очистить чат? Все сообщения будут удалены.")) {
+                db.ref('chats/' + currentChatId).remove().then(() => {
+                    goBack();
+                });
+            }
+        }
+
         function loadMessages(chatId) {
             if (currentChatListener) currentChatListener.off();
             
@@ -243,13 +286,18 @@
                     const msg = child.val();
                     const isMine = msg.phone === userphone;
                     
+                    let senderName = msg.user || "";
+                    if (senderName === "" || senderName === "Аноним") {
+                        senderName = msg.phone || "Неизвестный";
+                    }
+
                     const msgDiv = document.createElement("div");
                     msgDiv.className = "message " + (isMine ? "my" : "other");
                     
                     if (!isMine) {
                         const senderDiv = document.createElement("div");
                         senderDiv.className = "sender";
-                        senderDiv.textContent = msg.user || "Аноним";
+                        senderDiv.textContent = senderName;
                         msgDiv.appendChild(senderDiv);
                     }
 
@@ -280,7 +328,7 @@
         }
 
         function showSearchDialog() {
-            const phone = prompt("Введите номер пользователя (например, +79991234567):");
+            const phone = prompt("Введите номер пользователя:");
             if (!phone) return;
             if (phone === userphone) { alert("Это ваш номер!"); return; }
 
