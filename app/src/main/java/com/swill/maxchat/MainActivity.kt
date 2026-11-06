@@ -7,14 +7,12 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.*
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
@@ -44,6 +42,7 @@ class MainActivity : Activity() {
 
     private val PICK_IMAGE_REQUEST = 1
     private val PICK_VIDEO_REQUEST = 2
+    private val PICK_AVATAR_REQUEST = 3
 
     private val cloudName = "bo2cg6du"
     private val uploadPreset = "maxchat_upload"
@@ -94,14 +93,9 @@ override fun onResume() {
 private fun toggleTheme() {
     isDarkTheme = !isDarkTheme
     getSharedPreferences("MaxChatPrefs", Context.MODE_PRIVATE).edit().putBoolean("darkTheme", isDarkTheme).apply()
-    if (currentChatId != null) {
-        showChatScreen(chatHistory.find { it.first == currentChatId }?.second ?: "Чат", currentChatId!!)
-    } else {
-        showChatListScreen()
-    }
+    showChatListScreen()
 }
 
-// --- УВЕДОМЛЕНИЯ ---
 private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val channel = NotificationChannel("maxchat_channel", "MaxChat Notifications", NotificationManager.IMPORTANCE_HIGH)
@@ -119,7 +113,6 @@ private fun showNotification(senderName: String, text: String) {
     getSystemService(NotificationManager::class.java).notify(1, builder.build())
 }
 
-// --- ПОИСК НОВЫХ ЧАТОВ ---
 private fun listenForNewChats() {
     database.addValueEventListener(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
@@ -146,6 +139,51 @@ private fun listenForNewChats() {
     })
 }
 
+// --- НИЖНЯЯ ПАНЕЛЬ ---
+private fun createBottomBar(currentTab: String): LinearLayout {
+    val bottomBar = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(0, 16, 0, 16)
+        setBackgroundColor(if (isDarkTheme) Color.parseColor("#17212B") else Color.WHITE)
+        gravity = Gravity.CENTER
+    }
+
+    val tabs = listOf(
+        Triple("Чаты", "💬", "chats"),
+        Triple("Контакты", "👤", "contacts"),
+        Triple("Настройки", "⚙️", "settings"),
+        Triple("Профиль", "👤", "profile")
+    )
+
+    for ((name, icon, tag) in tabs) {
+        val tabLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+        }
+
+        val iconView = TextView(this).apply { text = icon; textSize = 24f; gravity = Gravity.CENTER }
+        val nameView = TextView(this).apply {
+            text = name; textSize = 12f
+            setTextColor(if (tag == currentTab) Color.parseColor("#517DA2") else if (isDarkTheme) Color.GRAY else Color.LTGRAY)
+            gravity = Gravity.CENTER
+        }
+
+        tabLayout.addView(iconView)
+        tabLayout.addView(nameView)
+
+        tabLayout.setOnClickListener {
+            when (tag) {
+                "chats" -> showChatListScreen()
+                "contacts" -> showContactsScreen()
+                "settings" -> showSettingsScreen()
+                "profile" -> showProfileScreen()
+            }
+        }
+        bottomBar.addView(tabLayout)
+    }
+    return bottomBar
+}
 // --- ЭКРАН ВХОДА ---
 private fun showAuthScreen() {
     val bgColor = if (isDarkTheme) tgBgDark else Color.WHITE
@@ -161,23 +199,14 @@ private fun showAuthScreen() {
     val loginButton = Button(this).apply { text = "Войти"; setBackgroundColor(tgHeaderBlue); setTextColor(Color.WHITE) }
     val registerButton = Button(this).apply { text = "Регистрация"; setBackgroundColor(Color.GREEN); setTextColor(Color.WHITE) }
     
-    layout.addView(title)
-    layout.addView(nameInput)
-    layout.addView(phoneInput)
-    layout.addView(passwordInput)
-    layout.addView(loginButton)
-    layout.addView(registerButton)
+    layout.addView(title); layout.addView(nameInput); layout.addView(phoneInput); layout.addView(passwordInput); layout.addView(loginButton); layout.addView(registerButton)
     setContentView(layout)
 
     registerButton.setOnClickListener {
         if (nameInput.visibility == View.GONE) { 
-            nameInput.visibility = View.VISIBLE
-            registerButton.text = "Завершить"
-            loginButton.visibility = View.GONE 
+            nameInput.visibility = View.VISIBLE; registerButton.text = "Завершить"; loginButton.visibility = View.GONE 
         } else {
-            val name = nameInput.text.toString().trim()
-            val phone = phoneInput.text.toString().trim()
-            val pass = passwordInput.text.toString().trim()
+            val name = nameInput.text.toString().trim(); val phone = phoneInput.text.toString().trim(); val pass = passwordInput.text.toString().trim()
             if (name.isNotEmpty() && phone.isNotEmpty() && pass.isNotEmpty()) {
                 usersRef.child(phone).addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
@@ -194,8 +223,7 @@ private fun showAuthScreen() {
     }
 
     loginButton.setOnClickListener {
-        val phone = phoneInput.text.toString().trim()
-        val pass = passwordInput.text.toString().trim()
+        val phone = phoneInput.text.toString().trim(); val pass = passwordInput.text.toString().trim()
         if (phone.isNotEmpty() && pass.isNotEmpty()) {
             usersRef.child(phone).addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
@@ -213,7 +241,8 @@ private fun showAuthScreen() {
         } else Toast.makeText(this, "Введите данные", Toast.LENGTH_SHORT).show()
     }
 }
-// --- СПИСОК ЧАТОВ (Стиль Telegram) ---
+
+// --- СПИСОК ЧАТОВ (С нижней панелью) ---
 private fun showChatListScreen() {
     currentChatId = null
     val bgColor = if (isDarkTheme) tgBgDark else Color.WHITE
@@ -222,36 +251,22 @@ private fun showChatListScreen() {
 
     val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor) }
     
-    // Шапка в стиле Telegram
     val headerLayout = LinearLayout(this).apply { 
-        orientation = LinearLayout.HORIZONTAL
-        setPadding(40, 40, 40, 24) 
-        setBackgroundColor(tgHeaderBlue)
-        gravity = Gravity.CENTER_VERTICAL 
+        orientation = LinearLayout.HORIZONTAL; setPadding(40, 40, 40, 24); setBackgroundColor(tgHeaderBlue); gravity = Gravity.CENTER_VERTICAL 
     }
     val titleText = TextView(this).apply { 
-        text = "MaxChat"; textSize = 22f; setTextColor(Color.WHITE); 
-        setTypeface(null, android.graphics.Typeface.BOLD)
+        text = "MaxChat"; textSize = 22f; setTextColor(Color.WHITE); setTypeface(null, android.graphics.Typeface.BOLD)
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) 
     }
-    val themeButton = Button(this).apply { text = if (isDarkTheme) "☀️" else "🌙"; setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); textSize = 20f }
     val searchButton = Button(this).apply { text = "🔍"; setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); textSize = 20f }
-    val logoutButton = Button(this).apply { text = "Выйти"; setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); textSize = 14f }
     
-    headerLayout.addView(titleText)
-    headerLayout.addView(themeButton)
-    headerLayout.addView(searchButton)
-    headerLayout.addView(logoutButton)
-    mainLayout.addView(headerLayout)
+    headerLayout.addView(titleText); headerLayout.addView(searchButton); mainLayout.addView(headerLayout)
 
     val scrollView = ScrollView(this)
     val chatListLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     
-    // Запросы в поддержку (для админа)
     if (myPhone == adminPhone) {
-        val supportHeader = TextView(this).apply { 
-            text = "Запросы в поддержку:"; textSize = 14f; setPadding(40, 16, 40, 16); setTextColor(subTextColor); 
-        }
+        val supportHeader = TextView(this).apply { text = "Запросы в поддержку:"; textSize = 14f; setPadding(40, 16, 40, 16); setTextColor(subTextColor) }
         chatListLayout.addView(supportHeader)
         database.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -261,7 +276,6 @@ private fun showChatListScreen() {
                         val userPhone = chatId.replace("support_", "")
                         if (userPhone != adminPhone) {
                             val req = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; setPadding(40, 16, 40, 16); gravity = Gravity.CENTER_VERTICAL }
-                            
                             val avatar = TextView(this@MainActivity).apply {
                                 text = "?"; setTextColor(Color.WHITE); setBackgroundColor(Color.parseColor("#FF9800")); textSize = 20f; gravity = Gravity.CENTER
                                 layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) }
@@ -269,12 +283,7 @@ private fun showChatListScreen() {
                             val textLayout = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
                             val nameView = TextView(this@MainActivity).apply { text = "Запрос от $userPhone"; textSize = 16f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD) }
                             val subView = TextView(this@MainActivity).apply { text = "Нажмите, чтобы ответить"; textSize = 14f; setTextColor(subTextColor); setPadding(0, 8, 0, 0) }
-                            
-                            textLayout.addView(nameView)
-                            textLayout.addView(subView)
-                            req.addView(avatar)
-                            req.addView(textLayout)
-                            
+                            textLayout.addView(nameView); textLayout.addView(subView); req.addView(avatar); req.addView(textLayout)
                             req.setOnClickListener { showChatScreen("Поддержка: $userPhone", chatId) }
                             chatListLayout.addView(req)
                             chatListLayout.addView(View(this@MainActivity).apply { setBackgroundColor(if(isDarkTheme) Color.parseColor("#3E4A5A") else Color.parseColor("#E5E5E5")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
@@ -285,7 +294,6 @@ private fun showChatListScreen() {
             override fun onCancelled(error: DatabaseError) {}
         })
     } else {
-        // Кнопка "Поддержка" для обычных юзеров
         val sup = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(40, 16, 40, 16); gravity = Gravity.CENTER_VERTICAL }
         val avatar = TextView(this).apply {
             text = "?"; setTextColor(Color.WHITE); setBackgroundColor(Color.parseColor("#FF9800")); textSize = 20f; gravity = Gravity.CENTER
@@ -294,21 +302,15 @@ private fun showChatListScreen() {
         val textLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
         val nameView = TextView(this).apply { text = "Поддержка"; textSize = 16f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD) }
         val subView = TextView(this).apply { text = "Напишите нам"; textSize = 14f; setTextColor(subTextColor); setPadding(0, 8, 0, 0) }
-        textLayout.addView(nameView)
-        textLayout.addView(subView)
-        sup.addView(avatar)
-        sup.addView(textLayout)
+        textLayout.addView(nameView); textLayout.addView(subView); sup.addView(avatar); sup.addView(textLayout)
         sup.setOnClickListener { showChatScreen("Поддержка", "support_$myPhone") }
-        
         chatListLayout.addView(sup)
         chatListLayout.addView(View(this).apply { setBackgroundColor(if(isDarkTheme) Color.parseColor("#3E4A5A") else Color.parseColor("#E5E5E5")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
     }
 
-    // Личные чаты
     for ((id, name) in chatHistory) {
         if (id == "general" || id.startsWith("support_")) continue
         val chat = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(40, 16, 40, 16); gravity = Gravity.CENTER_VERTICAL }
-        
         val avatar = TextView(this).apply {
             text = name.first().toString().uppercase(); setTextColor(Color.WHITE); setBackgroundColor(tgHeaderBlue); textSize = 20f; gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 32, 0) }
@@ -316,28 +318,19 @@ private fun showChatListScreen() {
         val textLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
         val nameView = TextView(this).apply { text = name; textSize = 16f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD) }
         val subView = TextView(this).apply { text = "Нажмите, чтобы открыть"; textSize = 14f; setTextColor(subTextColor); setPadding(0, 8, 0, 0) }
-        
-        textLayout.addView(nameView)
-        textLayout.addView(subView)
-        chat.addView(avatar)
-        chat.addView(textLayout)
+        textLayout.addView(nameView); textLayout.addView(subView); chat.addView(avatar); chat.addView(textLayout)
         chat.setOnClickListener { showChatScreen(name, id) }
-        
         chatListLayout.addView(chat)
         chatListLayout.addView(View(this).apply { setBackgroundColor(if(isDarkTheme) Color.parseColor("#3E4A5A") else Color.parseColor("#E5E5E5")) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
     }
 
     scrollView.addView(chatListLayout)
-    mainLayout.addView(scrollView)
+    mainLayout.addView(scrollView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f))
+    mainLayout.addView(createBottomBar("chats")) // Добавляем нижнюю панель
     setContentView(mainLayout)
 
-    themeButton.setOnClickListener { toggleTheme() }
     searchButton.setOnClickListener { showSearchDialog() }
-    logoutButton.setOnClickListener { 
-        AlertDialog.Builder(this).setTitle("Выйти?").setPositiveButton("Да") { _, _ -> logout() }.setNegativeButton("Нет", null).show() 
-    }
 }
-
 // --- ПОИСК ---
 private fun showSearchDialog() {
     val input = EditText(this).apply { hint = "Введите номер" }
@@ -350,8 +343,7 @@ private fun showSearchDialog() {
                         if (snapshot.exists()) {
                             val foundName = snapshot.child("name").getValue(String::class.java) ?: "Пользователь"
                             val chatId = if (myPhone < searchPhone) "${myPhone}_$searchPhone" else "${searchPhone}_$myPhone"
-                            addChatToHistory(chatId, foundName)
-                            showChatScreen(foundName, chatId)
+                            addChatToHistory(chatId, foundName); showChatScreen(foundName, chatId)
                         } else { Toast.makeText(this@MainActivity, "Не найден", Toast.LENGTH_SHORT).show() }
                     }
                     override fun onCancelled(error: DatabaseError) {}
@@ -359,21 +351,98 @@ private fun showSearchDialog() {
             }
         }.setNegativeButton("Отмена", null).show()
 }
-    // --- ЭКРАН ЧАТА (Стиль Telegram) ---
+
+// --- ЭКРАН КОНТАКТОВ (Заглушка) ---
+private fun showContactsScreen() {
+    val bgColor = if (isDarkTheme) tgBgDark else Color.WHITE
+    val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
+    
+    val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor); gravity = Gravity.CENTER }
+    val text = TextView(this).apply { text = "Здесь будут ваши контакты"; textSize = 18f; setTextColor(textColor) }
+    mainLayout.addView(text)
+    mainLayout.addView(createBottomBar("contacts"))
+    setContentView(mainLayout)
+}
+
+// --- ЭКРАН НАСТРОЕК ---
+private fun showSettingsScreen() {
+    val bgColor = if (isDarkTheme) tgBgDark else Color.WHITE
+    val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
+    
+    val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor); gravity = Gravity.CENTER }
+    
+    val themeButton = Button(this).apply { 
+        text = if (isDarkTheme) "Включить светлую тему" else "Включить темную тему"
+        setBackgroundColor(tgHeaderBlue); setTextColor(Color.WHITE)
+    }
+    themeButton.setOnClickListener { toggleTheme() }
+    
+    val logoutButton = Button(this).apply { 
+        text = "Выйти из аккаунта"
+        setBackgroundColor(Color.RED); setTextColor(Color.WHITE)
+    }
+    logoutButton.setOnClickListener { 
+        AlertDialog.Builder(this).setTitle("Выйти?").setPositiveButton("Да") { _, _ -> logout() }.setNegativeButton("Нет", null).show() 
+    }
+
+    mainLayout.addView(themeButton)
+    mainLayout.addView(logoutButton)
+    mainLayout.addView(createBottomBar("settings"))
+    setContentView(mainLayout)
+}
+
+// --- ЭКРАН ПРОФИЛЯ ---
+private fun showProfileScreen() {
+    val bgColor = if (isDarkTheme) tgBgDark else Color.WHITE
+    val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
+    
+    val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor); padding = 40 }
+    
+    val title = TextView(this).apply { text = "Мой профиль"; textSize = 24f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0, 40, 0, 40) }
+    
+    // Аватарка (пока просто круг с буквой)
+    val avatar = TextView(this).apply {
+        text = myName.first().toString().uppercase(); setTextColor(Color.WHITE); setBackgroundColor(tgHeaderBlue); textSize = 40f; gravity = Gravity.CENTER
+        layoutParams = LinearLayout.LayoutParams(200, 200).apply { gravity = Gravity.CENTER; setMargins(0, 0, 0, 20) }
+    }
+    
+    val nameView = TextView(this).apply { text = "Имя: $myName"; textSize = 18f; setTextColor(textColor); gravity = Gravity.CENTER }
+    val phoneView = TextView(this).apply { text = "Номер: $myPhone"; textSize = 16f; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, 10, 0, 40) }
+
+    val changeNameButton = Button(this).apply { text = "Сменить ник"; setBackgroundColor(tgHeaderBlue); setTextColor(Color.WHITE) }
+    changeNameButton.setOnClickListener {
+        val input = EditText(this).apply { setText(myName) }
+        AlertDialog.Builder(this).setTitle("Новый ник").setView(input)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    myName = newName
+                    saveLogin()
+                    usersRef.child(myPhone).child("name").setValue(newName)
+                    showProfileScreen() // Обновляем экран
+                }
+            }.setNegativeButton("Отмена", null).show()
+    }
+
+    mainLayout.addView(title)
+    mainLayout.addView(avatar)
+    mainLayout.addView(nameView)
+    mainLayout.addView(phoneView)
+    mainLayout.addView(changeNameButton)
+    
+    mainLayout.addView(createBottomBar("profile"))
+    setContentView(mainLayout)
+}
+    // --- ЭКРАН ЧАТА ---
     private fun showChatScreen(chatName: String, chatId: String) {
         currentChatId = chatId
         val bgColor = if (isDarkTheme) tgBgDark else tgBgLight
-        val headerColor = tgHeaderBlue
         val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
 
         val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor) }
         
-        // Шапка
         val headerLayout = LinearLayout(this).apply { 
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(24, 40, 24, 24) 
-            setBackgroundColor(headerColor)
-            gravity = Gravity.CENTER_VERTICAL 
+            orientation = LinearLayout.HORIZONTAL; setPadding(24, 40, 24, 24); setBackgroundColor(tgHeaderBlue); gravity = Gravity.CENTER_VERTICAL 
         }
         val backButton = Button(this).apply { text = "<"; setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); textSize = 24f }
         backButton.setOnClickListener { showChatListScreen() }
@@ -381,11 +450,9 @@ private fun showSearchDialog() {
         val headerTextLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f) }
         val headerTitle = TextView(this).apply { text = chatName; textSize = 18f; setTextColor(Color.WHITE); setTypeface(null, android.graphics.Typeface.BOLD) }
         val statusText = TextView(this).apply { text = "был(а) недавно"; textSize = 13f; setTextColor(Color.parseColor("#B0C4DE")) }
-        headerTextLayout.addView(headerTitle)
-        headerTextLayout.addView(statusText)
+        headerTextLayout.addView(headerTitle); headerTextLayout.addView(statusText)
 
-        headerLayout.addView(backButton)
-        headerLayout.addView(headerTextLayout)
+        headerLayout.addView(backButton); headerLayout.addView(headerTextLayout)
         
         if (chatId != "general") {
             val deleteButton = Button(this).apply { text = "X"; setTextColor(Color.RED); setBackgroundColor(Color.WHITE) }
@@ -393,46 +460,32 @@ private fun showSearchDialog() {
             deleteButton.setOnClickListener { 
                 AlertDialog.Builder(this).setTitle("Очистить чат?")
                     .setMessage("Все сообщения в этом диалоге будут удалены.")
-                    .setPositiveButton("Да") { _, _ -> 
-                        database.child(chatId).removeValue()
-                        showChatListScreen() 
-                    }
+                    .setPositiveButton("Да") { _, _ -> database.child(chatId).removeValue(); showChatListScreen() }
                     .setNegativeButton("Нет", null).show() 
             }
         }
         
         mainLayout.addView(headerLayout)
 
-        // Область сообщений
         scrollView = ScrollView(this)
         messagesLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16); setBackgroundColor(bgColor) }
         scrollView.addView(messagesLayout)
         mainLayout.addView(scrollView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f))
 
-        // Поле ввода
         val inputLayout = LinearLayout(this).apply { 
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(16, 12, 16, 12)
-            setBackgroundColor(if (isDarkTheme) Color.parseColor("#242F3D") else Color.WHITE)
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL; setPadding(16, 12, 16, 12); setBackgroundColor(if (isDarkTheme) Color.parseColor("#242F3D") else Color.WHITE); gravity = Gravity.CENTER_VERTICAL 
         }
         
         val attachButton = Button(this).apply { text = "+"; textSize = 24f; setTextColor(tgHeaderBlue); setBackgroundColor(Color.TRANSPARENT) }
         inputLayout.addView(attachButton)
 
-        val editText = EditText(this).apply { 
-            hint = "Сообщение..."; 
-            setTextColor(textColor); 
-            setHintTextColor(Color.GRAY)
-            setBackgroundColor(Color.TRANSPARENT)
-        }
+        val editText = EditText(this).apply { hint = "Сообщение..."; setTextColor(textColor); setHintTextColor(Color.GRAY); setBackgroundColor(Color.TRANSPARENT) }
         inputLayout.addView(editText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f))
         
         val sendButton = Button(this).apply { text = "➤"; textSize = 20f; setTextColor(Color.WHITE); setBackgroundColor(tgHeaderBlue) }
         inputLayout.addView(sendButton)
         mainLayout.addView(inputLayout)
 
-        // Обработчик фото/видео
         attachButton.setOnClickListener {
             val options = arrayOf("Фото", "Видео")
             AlertDialog.Builder(this).setTitle("Отправить").setItems(options) { _, which ->
@@ -446,7 +499,6 @@ private fun showSearchDialog() {
             }.show()
         }
 
-        // Индикатор "Печатает..."
         editText.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) {
                 if (chatId != "general" && !chatId.startsWith("support_")) {
@@ -457,7 +509,6 @@ private fun showSearchDialog() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
 
-        // Отправка
         sendButton.setOnClickListener {
             val text = editText.text.toString()
             if (text.isNotBlank()) {
@@ -471,7 +522,6 @@ private fun showSearchDialog() {
         setContentView(mainLayout)
         listenForMessages(chatId)
 
-        // Статус онлайн
         val partnerPhone = chatId.replace("support_", "").replace(myPhone, "").replace("_", "")
         if (partnerPhone.isNotEmpty() && partnerPhone != myPhone) {
             usersRef.child(partnerPhone).addValueEventListener(object : ValueEventListener {
