@@ -396,7 +396,7 @@ private fun showProfileScreen() {
     val bgColor = if (isDarkTheme) tgBgDark else Color.WHITE
     val textColor = if (isDarkTheme) Color.WHITE else Color.BLACK
     
-    val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor); padding = 40 }
+    val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bgColor); setPadding(40, 40, 40, 40) }
     
     val title = TextView(this).apply { text = "Мой профиль"; textSize = 24f; setTextColor(textColor); setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0, 40, 0, 40) }
     
